@@ -41,6 +41,17 @@ repositories {
 }
 
 dependencies {
+    api(platform("com.exactpro.th2:bom:4.0.2"))
+    api("com.exactpro.th2:grpc-common:3.12.0")
+
+    implementation("com.exactpro.th2:common:3.42.0")
+    implementation("com.exactpro.th2:grpc-data-provider:1.1.0-TH2-4262-reduce-load-on-a-separate-boxes-in-crawler-schema-3218351603-SNAPSHOT")
+
+    implementation("com.github.ajalt:clikt:2.8.0")
+
+    implementation("com.fasterxml.jackson.core:jackson-core")
+    implementation("com.fasterxml.jackson.module:jackson-module-kotlin")
+    implementation("com.fasterxml.jackson.dataformat:jackson-dataformat-yaml")
 
     testImplementation(kotlin("test"))
 }
@@ -86,9 +97,26 @@ publishing {
     }
 }
 
+signing {
+    useInMemoryPgpKeys(
+        project.findProperty("signingKey").toString(),
+        project.findProperty("signingPassword").toString()
+    )
+    sign(publishing.publications["maven"])
+}
+
 tasks {
     test {
-        useJUnitPlatform()
+        useJUnitPlatform {
+            excludeTags("integration-test")
+        }
+    }
+
+    register<Test>("integrationTest") {
+        group = "verification"
+        useJUnitPlatform {
+            includeTags("integration-test")
+        }
     }
 
     withType<KotlinCompile> {
