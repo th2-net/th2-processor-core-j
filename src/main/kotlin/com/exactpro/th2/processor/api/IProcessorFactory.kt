@@ -16,10 +16,17 @@
 
 package com.exactpro.th2.processor.api
 
+import com.exactpro.th2.common.grpc.EventID
+import com.exactpro.th2.common.utils.event.EventBatcher
+
 interface IProcessorFactory {
 
     val settingsClass: Class<out IProcessorSettings>
-
-    //FIXME: pass event router or event butcher
-    fun create(settings: IProcessorSettings?, state: ByteArray?): IProcessor
+    fun create(
+        @Suppress("SpellCheckingInspection")
+        eventBatcher: EventBatcher,
+        processorEventId: EventID,
+        settings: IProcessorSettings?,
+        state: ByteArray?
+    ): IProcessor
 }

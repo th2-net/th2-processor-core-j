@@ -17,6 +17,6 @@
 package com.exactpro.th2.processor.core.configuration
 
 enum class DataType {
-    MESSAGE,
+    MESSAGE_GROUP,
     EVENT
 }

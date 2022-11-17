@@ -46,6 +46,7 @@ dependencies {
     api("com.exactpro.th2:grpc-common:3.12.0")
 
     implementation("com.exactpro.th2:common:3.42.0")
+    implementation("com.exactpro.th2:common-utils:0.0.1-dev-3190587875-SNAPSHOT")
     implementation("com.exactpro.th2:grpc-data-provider:1.1.0-TH2-4262-reduce-load-on-a-separate-boxes-in-crawler-schema-3218351603-SNAPSHOT")
 
     implementation("com.github.ajalt:clikt:2.8.0")

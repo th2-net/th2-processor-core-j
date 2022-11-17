@@ -29,16 +29,16 @@ import java.util.concurrent.TimeUnit
 
 class Configuration @JvmOverloads constructor(
 
-    val type: DataType = DataType.MESSAGE,
+    val type: DataType = DataType.MESSAGE_GROUP,
     /**
      * Name of th2 session alias for storing/restoring state. th2 box name will be used if the value is blank.
      */
-    val stateSessionAlias: String = "",
+    val stateSessionAlias: String,
 
     val to: String?,
     val from: String,
     val intervalLength: String = "PT10M",
-    val th2Groups: List<String>,
+    val th2Groups: List<String> = emptyList(),
 
     val awaitTimeout: Long = 10,
     val awaitUnit: TimeUnit = TimeUnit.SECONDS,

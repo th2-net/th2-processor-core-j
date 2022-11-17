@@ -16,11 +16,14 @@
 
 package com.exactpro.th2.processor
 
+import com.exactpro.th2.common.event.Event
 import com.exactpro.th2.common.grpc.EventBatch
+import com.exactpro.th2.common.grpc.EventID
 import com.exactpro.th2.common.metrics.registerLiveness
 import com.exactpro.th2.common.metrics.registerReadiness
 import com.exactpro.th2.common.schema.factory.CommonFactory
 import com.exactpro.th2.common.schema.message.MessageRouter
+import com.exactpro.th2.common.utils.event.EventBatcher
 import com.exactpro.th2.dataprovider.grpc.DataProviderService
 import com.exactpro.th2.processor.api.IProcessor
 import com.exactpro.th2.processor.api.IProcessorFactory
@@ -28,30 +31,38 @@ import com.exactpro.th2.processor.core.configuration.Configuration
 import com.exactpro.th2.processor.core.configuration.DataType.*
 import com.exactpro.th2.processor.core.message.MessageCrawler
 import com.exactpro.th2.processor.utility.load
-import com.github.ajalt.clikt.core.CliktCommand
-import com.github.ajalt.clikt.parameters.options.option
 import mu.KotlinLogging
+import java.time.Duration
+import java.time.Instant
 import java.util.*
 import java.util.concurrent.ConcurrentLinkedDeque
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
 import kotlin.system.exitProcess
 
 fun main(args: Array<String>) {
-    ProcessorCommand().main(args)
+    ProcessorCommand(args).run()
 }
 
-class ProcessorCommand : CliktCommand() {
-    private val configs: String? by option(help = "Directory containing schema files")
+class ProcessorCommand(args: Array<String>) {
     private val resources: Deque<() -> Unit> = ConcurrentLinkedDeque()
 
-    private val commonFactory: CommonFactory = when (configs) {
-        null -> CommonFactory()
-        else -> CommonFactory.createFromArguments("--configs=$configs")
-    }.apply {
+    private val commonFactory = CommonFactory.createFromArguments(*args).apply {
         resources.add {
-            K_LOGGER.info("Closing common factory")
+            K_LOGGER.info { "Closing common factory" }
             close()
             liveness.disable()
+        }
+    }
+    private val scheduler = Executors.newScheduledThreadPool(1).apply {
+        resources.add {
+            K_LOGGER.info { "Shutdown scheduler" }
+            shutdown()
+            if (!awaitTermination(1, TimeUnit.SECONDS)) {
+                K_LOGGER.warn { "Shutdown scheduler failure after 1 second" }
+                shutdownNow()
+            }
         }
     }
 
@@ -60,12 +71,24 @@ class ProcessorCommand : CliktCommand() {
     private val readiness = registerReadiness("main")
     private val configuration = Configuration.create(commonFactory)
     private val eventRouter: MessageRouter<EventBatch> = commonFactory.eventBatchRouter
+    @Suppress("SpellCheckingInspection")
+    private val eventBatcher = EventBatcher(executor = scheduler, onBatch = eventRouter::sendAll).apply {
+        K_LOGGER.info { "Close event batcher" }
+        close()
+    }
     private val messageRouter = commonFactory.messageRouterMessageGroupBatch
     private val dataProvider = commonFactory.grpcRouter.getService(DataProviderService::class.java)
 
-    private val rootEventId: String = requireNotNull(commonFactory.rootEventId) {
+    private val rootEventId: EventID = requireNotNull(commonFactory.rootEventId) {
         "Common's root event id can not be null"
-    }
+    }.run { EventID.newBuilder().setId(this).build() }
+
+    private val from = Instant.parse(configuration.from)
+    private val to = configuration.to?.run(Instant::parse)
+    private val step = Duration.parse(configuration.intervalLength)
+
+    private var currentFrom = Instant.MIN
+    private var currentTo = Instant.MAX
 
     init {
         liveness.enable()
@@ -79,16 +102,30 @@ class ProcessorCommand : CliktCommand() {
                     K_LOGGER.info { "Shutdown end" }
                 }
         })
+
+        check(to == null || to >= from) {
+            "Incorrect configuration parameters: the ${configuration.to} `to` option is less than the ${configuration.from} `from`"
+        }
+
+        check(!step.isNegative && !step.isZero) {
+            "Incorrect configuration parameters: the ${configuration.intervalLength} `interval length` option is negative or zero"
+        }
+
+        check(configuration.awaitTimeout > 0) {
+            "Incorrect configuration parameters: the ${configuration.awaitTimeout} `await timeout` option isn't positive"
+        }
     }
 
-    override fun run() {
-        runCatching {
+    fun run() {
+        try {
             when(configuration.type) {
-                MESSAGE -> processMessages()
+                MESSAGE_GROUP -> processMessages()
                 EVENT -> processEvents()
             }
-        }.onFailure {exception ->
-            K_LOGGER.error(exception) { "fatal error. Exit the program" }
+        } catch (e: InterruptedException) {
+            K_LOGGER.error(e) { "Message handling interrupted" }
+        } catch (e: Throwable) {
+            K_LOGGER.error(e) { "fatal error. Exit the program" }
             exitProcess(1)
         }
     }
@@ -98,54 +135,81 @@ class ProcessorCommand : CliktCommand() {
     }
 
     private fun processMessages() {
-        val state: ByteArray? = recoverMessageState()
-
         try {
+            val processorEventId = Event.start()
+                .name("Message processor started ${Instant.now()}")
+                .type("Message processor start")
+                .toBatchProto(rootEventId)
+                .also(eventRouter::sendAll)
+                .run { getEvents(0).id }
+
+            val state: ByteArray? = recoverState()
+
             MessageCrawler(
                 messageRouter,
                 dataProvider,
                 configuration,
-                create(configuration, state)
+                createProcessor(configuration, processorEventId, state)
             ).use { crawler ->
                 K_LOGGER.info { "Processing started" }
                 readiness.enable()
 
-                while (crawler.process()) {
-                    storeMessageState(crawler.serializeState())
-                }
+                while (true) {
+                    currentFrom = if (currentTo == Instant.MAX) from else currentTo
+                    currentTo = currentFrom.doStep()
+                    if (currentFrom == currentTo) {
+                        K_LOGGER.info { "Processing completed" }
+                        break
+                    }
 
-                K_LOGGER.info { "Processing completed" }
+                    crawler.process(currentFrom, currentTo)
+                    storeState(crawler.serializeState())
+                }
             }
         } finally {
             readiness.disable()
         }
     }
 
-    private fun storeMessageState(serializeState: ByteArray) {
+    private fun storeState(serializeState: ByteArray) {
         //TODO:
+        K_LOGGER.warn { "Store state method isn't implemented" }
     }
 
-    private fun recoverMessageState(): ByteArray? {
-        //TODO("Not yet implemented")
+    private fun recoverState(): ByteArray? {
+        K_LOGGER.warn { "Recover state method isn't implemented" }
         return null
     }
-
-    companion object {
-        private val K_LOGGER = KotlinLogging.logger {}
-
-        fun create(configuration: Configuration, state: ByteArray?): IProcessor {
-            val factory = runCatching {
-                load<IProcessorFactory>()
-            }.getOrElse {
-                throw IllegalStateException("Failed to load processor factory", it)
-            }
-
-            return configuration.IProcessorSettings.runCatching {
-                factory.create(this, state)
+    private fun createProcessor(
+        configuration: Configuration,
+        processorEventId: EventID,
+        state: ByteArray?
+    ): IProcessor = runCatching {
+            load<IProcessorFactory>()
+        }.getOrElse {
+            throw IllegalStateException("Failed to load processor factory", it)
+        }.run {
+            runCatching {
+                create(eventBatcher, processorEventId, configuration.IProcessorSettings, state)
             }.getOrElse {
                 throw IllegalStateException("Failed to create processor instance", it)
             }
         }
+
+    private fun Instant.doStep(): Instant {
+        if (to == this) {
+            return this
+        }
+
+        val next = this.plus(step)
+        return when {
+            to != null && to < next -> to
+            else -> next
+        }
+    }
+
+    companion object {
+        private val K_LOGGER = KotlinLogging.logger {}
     }
 }
 

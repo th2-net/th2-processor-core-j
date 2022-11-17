@@ -31,43 +31,23 @@ import com.exactpro.th2.processor.core.message.controller.IMessageController
 import com.exactpro.th2.processor.core.message.controller.MessageController
 import com.google.protobuf.TextFormat.shortDebugString
 import mu.KotlinLogging
-import java.time.Duration
 import java.time.Instant
 
 class MessageCrawler(
     messageRouter: MessageRouter<MessageGroupBatch>,
     private val dataProvider: DataProviderService,
     private val configuration: Configuration,
-    private val IProcessor: IProcessor,
+    private val processor: IProcessor,
 ) : AutoCloseable {
-    private val from = Instant.parse(configuration.from)
-    private val to = configuration.to?.run(Instant::parse)
-    private val step = Duration.parse(configuration.intervalLength)
     private val groupSet = configuration.th2Groups.toSet()
 
     private val monitor: SubscriberMonitor
-
-    private var currentFrom = Instant.MIN
-    private var currentTo = Instant.MAX
-
     @Volatile
     private var controller: IMessageController = DummyMessageController.INSTANT
 
     init {
-        check(to == null || to >= from) {
-            "Incorrect configuration parameters: the ${configuration.to} `to` option is less than the ${configuration.from} `from`"
-        }
-
-        check(!step.isNegative && !step.isZero) {
-            "Incorrect configuration parameters: the ${configuration.intervalLength} `interval length` option is negative or zero"
-        }
-
         check(configuration.th2Groups.isEmpty()) {
             "Incorrect configuration parameters: the ${configuration.th2Groups} `th2 groups` option is empty"
-        }
-
-        check(configuration.awaitTimeout > 0) {
-            "Incorrect configuration parameters: the ${configuration.awaitTimeout} `await timeout` option isn't positive"
         }
 
         monitor = messageRouter.subscribe({ _, batch ->
@@ -77,7 +57,7 @@ class MessageCrawler(
                         "${message.logId} message is not th2 parsed message"
                     }
 
-                    IProcessor.handle(message.message)
+                    processor.handle(message.message)
                 }
             }
         }, "from_codec")
@@ -86,22 +66,16 @@ class MessageCrawler(
     /**
      * @return true if the current iteration process interval otherwise false
      */
-    fun process(): Boolean {
-        currentFrom = if (currentTo == Instant.MAX) from else currentTo
-        currentTo = currentFrom.doStep()
-        if (currentFrom == currentTo) {
-            return false
-        }
-
+    fun process(from: Instant, to: Instant): Boolean {
         controller = MessageController(
             groupSet,
-            currentFrom,
-            currentTo
+            from,
+            to
         )
 
         val request = CradleMessageGroupsRequest.newBuilder().apply {
-            startTimestamp = currentFrom.toTimestamp()
-            endTimestamp = currentTo.toTimestamp()
+            startTimestamp = from.toTimestamp()
+            endTimestamp = to.toTimestamp()
 
             val groupBuilder = Group.newBuilder()
             for (group in configuration.th2Groups) {
@@ -128,20 +102,8 @@ class MessageCrawler(
         monitor.unsubscribe()
     }
 
-    private fun Instant.doStep(): Instant {
-        if (to == this) {
-            return this
-        }
-
-        val next = this.plus(step)
-        return when {
-            to != null && to < next -> to
-            else -> next
-        }
-    }
-
     fun serializeState(): ByteArray {
-        TODO("Not yet implemented")
+        return ByteArray(0)
     }
 
     companion object {

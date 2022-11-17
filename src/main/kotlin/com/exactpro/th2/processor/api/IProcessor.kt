@@ -24,5 +24,5 @@ interface IProcessor : AutoCloseable {
 
     fun handle(message: Message)
 
-    fun serializeState(): ByteArray
+    fun serializeState(): ByteArray? = null
 }
