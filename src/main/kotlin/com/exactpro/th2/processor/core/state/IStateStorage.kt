@@ -13,13 +13,9 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  */
+package com.exactpro.th2.processor.core.state
 
-package com.exactpro.th2.processor.api
-
-interface ProcessorFactory {
-
-    val settingsClass: Class<out ProcessorSettings>
-
-    //FIXME: pass event router or event butcher
-    fun create(settings: ProcessorSettings?, state: ByteArray): Processor
+interface IStateStorage {
+    fun loadState(): ByteArray?
+    fun saveState(state: ByteArray)
 }

@@ -24,7 +24,7 @@ import com.exactpro.th2.common.schema.message.SubscriberMonitor
 import com.exactpro.th2.dataprovider.grpc.CradleMessageGroupsRequest
 import com.exactpro.th2.dataprovider.grpc.DataProviderService
 import com.exactpro.th2.dataprovider.grpc.Group
-import com.exactpro.th2.processor.api.Processor
+import com.exactpro.th2.processor.api.IProcessor
 import com.exactpro.th2.processor.core.configuration.Configuration
 import com.exactpro.th2.processor.core.message.controller.DummyMessageController
 import com.exactpro.th2.processor.core.message.controller.IMessageController
@@ -38,7 +38,7 @@ class MessageCrawler(
     messageRouter: MessageRouter<MessageGroupBatch>,
     private val dataProvider: DataProviderService,
     private val configuration: Configuration,
-    private val processor: Processor,
+    private val IProcessor: IProcessor,
 ) : AutoCloseable {
     private val from = Instant.parse(configuration.from)
     private val to = configuration.to?.run(Instant::parse)
@@ -77,7 +77,7 @@ class MessageCrawler(
                         "${message.logId} message is not th2 parsed message"
                     }
 
-                    processor.handle(message.message)
+                    IProcessor.handle(message.message)
                 }
             }
         }, "from_codec")

@@ -17,8 +17,8 @@
 package com.exactpro.th2.processor.core.configuration
 
 import com.exactpro.th2.common.schema.factory.CommonFactory
-import com.exactpro.th2.processor.api.ProcessorFactory
-import com.exactpro.th2.processor.api.ProcessorSettings
+import com.exactpro.th2.processor.api.IProcessorFactory
+import com.exactpro.th2.processor.api.IProcessorSettings
 import com.exactpro.th2.processor.utility.load
 import com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES
 import com.fasterxml.jackson.databind.ObjectMapper
@@ -43,12 +43,12 @@ class Configuration @JvmOverloads constructor(
     val awaitTimeout: Long = 10,
     val awaitUnit: TimeUnit = TimeUnit.SECONDS,
 
-    val processorSettings: ProcessorSettings
+    val IProcessorSettings: IProcessorSettings
 ) {
     companion object {
         private val OBJECT_MAPPER: ObjectMapper = ObjectMapper(YAMLFactory()).apply {
             registerKotlinModule()
-            registerModule(SimpleModule().addAbstractTypeMapping(ProcessorSettings::class.java, load<ProcessorFactory>().settingsClass))
+            registerModule(SimpleModule().addAbstractTypeMapping(IProcessorSettings::class.java, load<IProcessorFactory>().settingsClass))
             configure(FAIL_ON_UNKNOWN_PROPERTIES, false)
         }
 

@@ -16,13 +16,10 @@
 
 package com.exactpro.th2.processor.api
 
-import com.exactpro.th2.common.grpc.Message
-import javax.annotation.concurrent.ThreadSafe
+interface IProcessorFactory {
 
-@ThreadSafe
-interface Processor : AutoCloseable {
+    val settingsClass: Class<out IProcessorSettings>
 
-    fun handle(message: Message)
-
-    fun serializeState(): ByteArray
+    //FIXME: pass event router or event butcher
+    fun create(settings: IProcessorSettings?, state: ByteArray?): IProcessor
 }

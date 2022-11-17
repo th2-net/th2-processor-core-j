@@ -22,8 +22,8 @@ import com.exactpro.th2.common.metrics.registerReadiness
 import com.exactpro.th2.common.schema.factory.CommonFactory
 import com.exactpro.th2.common.schema.message.MessageRouter
 import com.exactpro.th2.dataprovider.grpc.DataProviderService
-import com.exactpro.th2.processor.api.Processor
-import com.exactpro.th2.processor.api.ProcessorFactory
+import com.exactpro.th2.processor.api.IProcessor
+import com.exactpro.th2.processor.api.IProcessorFactory
 import com.exactpro.th2.processor.core.configuration.Configuration
 import com.exactpro.th2.processor.core.configuration.DataType.*
 import com.exactpro.th2.processor.core.message.MessageCrawler
@@ -98,7 +98,7 @@ class ProcessorCommand : CliktCommand() {
     }
 
     private fun processMessages() {
-        val state: ByteArray = recoverMessageState()
+        val state: ByteArray? = recoverMessageState()
 
         try {
             MessageCrawler(
@@ -122,24 +122,25 @@ class ProcessorCommand : CliktCommand() {
     }
 
     private fun storeMessageState(serializeState: ByteArray) {
-        TODO("Not yet implemented")
+        //TODO:
     }
 
-    private fun recoverMessageState(): ByteArray {
-        TODO("Not yet implemented")
+    private fun recoverMessageState(): ByteArray? {
+        //TODO("Not yet implemented")
+        return null
     }
 
     companion object {
         private val K_LOGGER = KotlinLogging.logger {}
 
-        fun create(configuration: Configuration, state: ByteArray): Processor {
+        fun create(configuration: Configuration, state: ByteArray?): IProcessor {
             val factory = runCatching {
-                load<ProcessorFactory>()
+                load<IProcessorFactory>()
             }.getOrElse {
                 throw IllegalStateException("Failed to load processor factory", it)
             }
 
-            return configuration.processorSettings.runCatching {
+            return configuration.IProcessorSettings.runCatching {
                 factory.create(this, state)
             }.getOrElse {
                 throw IllegalStateException("Failed to create processor instance", it)
