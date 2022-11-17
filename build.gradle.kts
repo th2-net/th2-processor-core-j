@@ -9,6 +9,7 @@ plugins {
     `maven-publish`
     signing
     id("org.owasp.dependencycheck") version "7.3.0"
+    id("io.github.gradle-nexus.publish-plugin") version "1.0.0"
 }
 
 group = "com.exactpro.th2"
@@ -103,6 +104,15 @@ signing {
         project.findProperty("signingPassword").toString()
     )
     sign(publishing.publications["maven"])
+}
+
+nexusPublishing {
+    repositories {
+        create("sonatype") {
+            nexusUrl.set(uri("https://s01.oss.sonatype.org/service/local/"))
+            snapshotRepositoryUrl.set(uri("https://s01.oss.sonatype.org/content/repositories/snapshots/"))
+        }
+    }
 }
 
 tasks {
