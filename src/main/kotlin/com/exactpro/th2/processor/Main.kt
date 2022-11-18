@@ -71,7 +71,6 @@ class ProcessorCommand(args: Array<String>) {
     private val readiness = registerReadiness("main")
     private val configuration = Configuration.create(commonFactory)
     private val eventRouter: MessageRouter<EventBatch> = commonFactory.eventBatchRouter
-    @Suppress("SpellCheckingInspection")
     private val eventBatcher = EventBatcher(executor = scheduler, onBatch = eventRouter::sendAll).apply {
         K_LOGGER.info { "Close event batcher" }
         close()
@@ -190,7 +189,7 @@ class ProcessorCommand(args: Array<String>) {
             throw IllegalStateException("Failed to load processor factory", it)
         }.run {
             runCatching {
-                create(eventBatcher, processorEventId, configuration.IProcessorSettings, state)
+                create(eventBatcher, processorEventId, configuration.processorSettings, state)
             }.getOrElse {
                 throw IllegalStateException("Failed to create processor instance", it)
             }

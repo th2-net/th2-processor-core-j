@@ -43,7 +43,7 @@ class Configuration @JvmOverloads constructor(
     val awaitTimeout: Long = 10,
     val awaitUnit: TimeUnit = TimeUnit.SECONDS,
 
-    val IProcessorSettings: IProcessorSettings
+    val processorSettings: IProcessorSettings
 ) {
     companion object {
         private val OBJECT_MAPPER: ObjectMapper = ObjectMapper(YAMLFactory()).apply {
