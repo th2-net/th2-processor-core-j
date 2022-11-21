@@ -97,6 +97,7 @@ class MessageController(
             }
         }
 
+        K_LOGGER.debug { "Actual data has received, need check = $needCheck, state = $state" }
         if (needCheck) {
             verify()
         }
@@ -118,6 +119,8 @@ class MessageController(
                     }
                 }
             }
+
+        K_LOGGER.debug { "Expected data has received, need check = $needCheck, state = $state" }
         if (needCheck) {
             verify()
         }
