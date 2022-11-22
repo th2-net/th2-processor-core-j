@@ -43,19 +43,20 @@ repositories {
 
 dependencies {
     api(platform("com.exactpro.th2:bom:4.0.2"))
-    api("com.exactpro.th2:grpc-common:3.12.0")
 
     implementation("com.exactpro.th2:common:3.42.0")
-    implementation("com.exactpro.th2:common-utils:0.0.1-dev-3190587875-SNAPSHOT")
-    implementation("com.exactpro.th2:grpc-data-provider:1.1.0-TH2-4262-reduce-load-on-a-separate-boxes-in-crawler-schema-3218351603-SNAPSHOT")
-
-    implementation("com.github.ajalt:clikt:2.8.0")
+    implementation("com.exactpro.th2:common-utils:0.0.1-dev-3497139120-SNAPSHOT")
+    implementation("com.exactpro.th2:grpc-data-provider:1.1.0-TH2-4262-reduce-load-on-a-separate-boxes-in-crawler-schema-3480921360-SNAPSHOT")
 
     implementation("com.fasterxml.jackson.core:jackson-core")
     implementation("com.fasterxml.jackson.module:jackson-module-kotlin")
     implementation("com.fasterxml.jackson.dataformat:jackson-dataformat-yaml")
 
-    testImplementation(kotlin("test"))
+    testImplementation("org.jetbrains.kotlin:kotlin-test-junit5")
+    testImplementation("org.mockito.kotlin:mockito-kotlin:4.0.0")
+
+    testImplementation("org.junit.jupiter:junit-jupiter-api:5.9.0")
+    testRuntimeOnly("org.junit.jupiter:junit-jupiter:5.9.0")
 }
 
 publishing {

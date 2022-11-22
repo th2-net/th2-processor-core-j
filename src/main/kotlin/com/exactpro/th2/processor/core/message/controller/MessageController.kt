@@ -25,9 +25,10 @@ import com.exactpro.th2.common.message.sequence
 import com.exactpro.th2.common.message.sessionAlias
 import com.exactpro.th2.common.message.sessionGroup
 import com.exactpro.th2.common.message.toTimestamp
+import com.exactpro.th2.common.util.toInstant
 import com.exactpro.th2.dataprovider.grpc.MessageIntervalInfo
+import com.exactpro.th2.processor.api.IProcessor
 import com.exactpro.th2.processor.core.message.StreamKey
-import com.google.protobuf.TextFormat.shortDebugString
 import com.google.protobuf.util.Timestamps
 import mu.KotlinLogging
 import org.apache.commons.lang3.StringUtils
@@ -41,6 +42,7 @@ import kotlin.concurrent.withLock
 
 @ThreadSafe
 class MessageController(
+    private val processor: IProcessor,
     private val th2Groups: Set<String>,
     private val startTime: Instant,
     private val endTime: Instant
@@ -64,10 +66,10 @@ class MessageController(
 
                 val message = anyMessage.message
                 val timestamp = message.metadata.timestamp
-                if (!th2Groups.contains(message.sessionGroup)
+                if (!(th2Groups.contains(message.sessionGroup) || th2Groups.contains(message.sessionAlias)) // FIXME: implement separate modes for session alias and group
                     || Timestamps.compare(timestamp, startTimestamp) < 0
-                    || Timestamps.compare(timestamp, endTimestamp) > 0) {
-                    K_LOGGER.warn { "unexpected message ${message.shortId()}, timestamp ${shortDebugString(timestamp)}" }
+                    || Timestamps.compare(timestamp, endTimestamp) >= 0) {
+                    K_LOGGER.warn { "unexpected message ${message.shortId()}, timestamp ${timestamp.toInstant()}, start $startTime, end $endTime, groups $th2Groups" }
                     continue
                 }
 
@@ -77,6 +79,7 @@ class MessageController(
                         .compute(message.sessionAlias) { _, current -> (current ?: 0L) + 1 }
                     else -> error("Unknown $direction direction in the ${message.logId} message")
                 }
+                processor.handle(message)
             }
         }
 
@@ -104,6 +107,13 @@ class MessageController(
     }
 
     override fun expected(intervalInfo: MessageIntervalInfo) {
+        check(Timestamps.compare(intervalInfo.startTimestamp, startTimestamp) == 0) {
+            "Start timestamp ${intervalInfo.startTimestamp.toInstant()} is not equal as configured $startTime"
+        }
+        check(Timestamps.compare(intervalInfo.endTimestamp, endTimestamp) == 0) {
+            "End timestamp ${intervalInfo.endTimestamp.toInstant()} is not equal as configured $endTime"
+        }
+
         var needCheck = false
         intervalInfo.messagesInfoList.asSequence()
             .filterNot { StringUtils.isBlank(it.sessionAlias) }
@@ -126,11 +136,18 @@ class MessageController(
         }
     }
 
-    override fun await(time: Long, unit: TimeUnit): Boolean = lock.withLock {
-        if (condition.await(time, unit)) {
-            state.isEmpty()
+    override fun await(time: Long, unit: TimeUnit): Boolean {
+        if (state.isEmpty()) {
+            return true
         }
-        false
+
+        lock.withLock {
+            if (condition.await(time, unit)) {
+                return state.isEmpty()
+            }
+        }
+
+        return false
     }
 
     override fun toString(): String {

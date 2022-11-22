@@ -41,13 +41,36 @@ import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
 import kotlin.system.exitProcess
 
+private val K_LOGGER = KotlinLogging.logger {}
+
 fun main(args: Array<String>) {
-    ProcessorCommand(args).run()
+    try {
+        val resources: Deque<() -> Unit> = ConcurrentLinkedDeque()
+        Runtime.getRuntime().addShutdownHook(thread(start = false, name = "shutdown") {
+            try {
+                K_LOGGER.info { "Shutdown start" }
+                resources.descendingIterator().forEach { action ->
+                    runCatching(action).onFailure { K_LOGGER.error(it.message, it) }
+                }
+            } finally {
+                K_LOGGER.info { "Shutdown end" }
+            }
+        })
+
+        ProcessorCommand(resources, args).run()
+    } catch (e: InterruptedException) {
+        K_LOGGER.error(e) { "Message handling interrupted" }
+    } catch (e: Throwable) {
+        K_LOGGER.error(e) { "fatal error. Exit the program" }
+        e.printStackTrace()
+        exitProcess(1)
+    }
 }
 
-class ProcessorCommand(args: Array<String>) {
-    private val resources: Deque<() -> Unit> = ConcurrentLinkedDeque()
-
+class ProcessorCommand(
+    resources: Deque<() -> Unit>,
+    args: Array<String>
+) {
     private val commonFactory = CommonFactory.createFromArguments(*args).apply {
         resources.add {
             K_LOGGER.info { "Closing common factory" }
@@ -72,8 +95,10 @@ class ProcessorCommand(args: Array<String>) {
     private val configuration = Configuration.create(commonFactory)
     private val eventRouter: MessageRouter<EventBatch> = commonFactory.eventBatchRouter
     private val eventBatcher = EventBatcher(executor = scheduler, onBatch = eventRouter::sendAll).apply {
-        K_LOGGER.info { "Close event batcher" }
-        close()
+        resources.add {
+            K_LOGGER.info { "Close event batcher" }
+            close()
+        }
     }
     private val messageRouter = commonFactory.messageRouterMessageGroupBatch
     private val dataProvider = commonFactory.grpcRouter.getService(DataProviderService::class.java)
@@ -86,21 +111,11 @@ class ProcessorCommand(args: Array<String>) {
     private val to = configuration.to?.run(Instant::parse)
     private val step = Duration.parse(configuration.intervalLength)
 
-    private var currentFrom = Instant.MIN
-    private var currentTo = Instant.MAX
+    private var currentFrom = from
+    private var currentTo = from.doStep()
 
     init {
         liveness.enable()
-        Runtime.getRuntime().addShutdownHook(thread(start = false, name = "shutdown") {
-                try {
-                    K_LOGGER.info { "Shutdown start" }
-                    resources.descendingIterator().forEach { action ->
-                        runCatching(action).onFailure { K_LOGGER.error(it.message, it) }
-                    }
-                } finally {
-                    K_LOGGER.info { "Shutdown end" }
-                }
-        })
 
         check(to == null || to >= from) {
             "Incorrect configuration parameters: the ${configuration.to} `to` option is less than the ${configuration.from} `from`"
@@ -116,16 +131,9 @@ class ProcessorCommand(args: Array<String>) {
     }
 
     fun run() {
-        try {
-            when(configuration.type) {
-                MESSAGE_GROUP -> processMessages()
-                EVENT -> processEvents()
-            }
-        } catch (e: InterruptedException) {
-            K_LOGGER.error(e) { "Message handling interrupted" }
-        } catch (e: Throwable) {
-            K_LOGGER.error(e) { "fatal error. Exit the program" }
-            exitProcess(1)
+        when(configuration.type) {
+            MESSAGE_GROUP -> processMessages()
+            EVENT -> processEvents()
         }
     }
 
@@ -153,17 +161,17 @@ class ProcessorCommand(args: Array<String>) {
                 K_LOGGER.info { "Processing started" }
                 readiness.enable()
 
-                while (true) {
-                    currentFrom = if (currentTo == Instant.MAX) from else currentTo
+                do {
+                    crawler.process(currentFrom, currentTo)
+                    storeState(crawler.serializeState())
+
+                    currentFrom = currentTo
                     currentTo = currentFrom.doStep()
                     if (currentFrom == currentTo) {
                         K_LOGGER.info { "Processing completed" }
                         break
                     }
-
-                    crawler.process(currentFrom, currentTo)
-                    storeState(crawler.serializeState())
-                }
+                } while (true)
             }
         } finally {
             readiness.disable()

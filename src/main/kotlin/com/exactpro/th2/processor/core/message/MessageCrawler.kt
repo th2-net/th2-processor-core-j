@@ -17,10 +17,9 @@
 package com.exactpro.th2.processor.core.message
 
 import com.exactpro.th2.common.grpc.MessageGroupBatch
-import com.exactpro.th2.common.message.logId
 import com.exactpro.th2.common.message.toTimestamp
+import com.exactpro.th2.common.schema.message.ExclusiveSubscriberMonitor
 import com.exactpro.th2.common.schema.message.MessageRouter
-import com.exactpro.th2.common.schema.message.SubscriberMonitor
 import com.exactpro.th2.dataprovider.grpc.CradleMessageGroupsRequest
 import com.exactpro.th2.dataprovider.grpc.DataProviderService
 import com.exactpro.th2.dataprovider.grpc.Group
@@ -41,26 +40,18 @@ class MessageCrawler(
 ) : AutoCloseable {
     private val groupSet = configuration.th2Groups.toSet()
 
-    private val monitor: SubscriberMonitor
+    private val monitor: ExclusiveSubscriberMonitor
     @Volatile
     private var controller: IMessageController = DummyMessageController.INSTANT
 
     init {
-        check(configuration.th2Groups.isEmpty()) {
+        check(configuration.th2Groups.isNotEmpty()) {
             "Incorrect configuration parameters: the ${configuration.th2Groups} `th2 groups` option is empty"
         }
 
-        monitor = messageRouter.subscribe({ _, batch ->
-            for (group in batch.groupsList) {
-                for (message in group.messagesList) {
-                    check(message.hasMessage()) {
-                        "${message.logId} message is not th2 parsed message"
-                    }
-
-                    processor.handle(message.message)
-                }
-            }
-        }, "from_codec")
+        monitor = messageRouter.subscribeExclusive { _, batch ->
+            controller.actual(batch)
+        }
     }
 
     /**
@@ -68,6 +59,7 @@ class MessageCrawler(
      */
     fun process(from: Instant, to: Instant): Boolean {
         controller = MessageController(
+            processor,
             groupSet,
             from,
             to
@@ -76,6 +68,7 @@ class MessageCrawler(
         val request = CradleMessageGroupsRequest.newBuilder().apply {
             startTimestamp = from.toTimestamp()
             endTimestamp = to.toTimestamp()
+            externalUserQueue = monitor.queue
 
             val groupBuilder = Group.newBuilder()
             for (group in configuration.th2Groups) {
