@@ -44,7 +44,7 @@ repositories {
 dependencies {
     api(platform("com.exactpro.th2:bom:4.0.2"))
 
-    implementation("com.exactpro.th2:common:3.42.0")
+    implementation("com.exactpro.th2:common:3.42.0-TH2-4262-reduce-load-on-a-separate-boxes-in-crawler-schema-3515227746-SNAPSHOT")
     implementation("com.exactpro.th2:common-utils:0.0.1-dev-3497139120-SNAPSHOT")
     implementation("com.exactpro.th2:grpc-data-provider:1.1.0-TH2-4262-reduce-load-on-a-separate-boxes-in-crawler-schema-3480921360-SNAPSHOT")
 
