@@ -29,6 +29,7 @@ import com.exactpro.th2.common.util.toInstant
 import com.exactpro.th2.dataprovider.grpc.MessageIntervalInfo
 import com.exactpro.th2.processor.api.IProcessor
 import com.exactpro.th2.processor.core.message.StreamKey
+import com.google.protobuf.Timestamp
 import com.google.protobuf.util.Timestamps
 import mu.KotlinLogging
 import org.apache.commons.lang3.StringUtils
@@ -47,6 +48,11 @@ class MessageController(
     private val startTime: Instant,
     private val endTime: Instant
 ) : IMessageController {
+    /**
+     * Controller updates this marker on each actual processed message which passed precondition
+     */
+    @Volatile
+    private var lastProcessedTimestamp: Timestamp = Timestamps.MIN_VALUE
     private val state = ConcurrentHashMap<StreamKey, Long>()
     private val lock = ReentrantLock()
     private val condition = lock.newCondition()
@@ -73,6 +79,7 @@ class MessageController(
                     continue
                 }
 
+                lastProcessedTimestamp = timestamp
                 val direction = message.direction
                 when {
                     direction.number >= 0 -> directionMap.getOrPut(direction, ::hashMapOf)
@@ -102,7 +109,7 @@ class MessageController(
 
         K_LOGGER.debug { "Actual data has received, need check = $needCheck, state = $state" }
         if (needCheck) {
-            verify()
+            verifyAndSignal()
         }
     }
 
@@ -132,7 +139,7 @@ class MessageController(
 
         K_LOGGER.debug { "Expected data has received, need check = $needCheck, state = $state" }
         if (needCheck) {
-            verify()
+            verifyAndSignal()
         }
     }
 
@@ -142,19 +149,32 @@ class MessageController(
         }
 
         lock.withLock {
-            if (condition.await(time, unit)) {
-                return state.isEmpty()
+            val actualTimestampGenerator = sequence { while (true) { yield(lastProcessedTimestamp) } }.iterator()
+            var counter = 0
+
+            while (true) {
+                counter++
+                val previous = actualTimestampGenerator.next()
+                if (condition.await(time, unit) || previous === actualTimestampGenerator.next()) {
+                    break
+                } else {
+                    K_LOGGER.info {
+                        "Controller has been processing actual messages, " +
+                                "previous timestamp ${Timestamps.toString(previous)}, " +
+                                "waiting attempt $counter for $time $unit"
+                    }
+                }
             }
         }
 
-        return false
+        return state.isEmpty()
     }
 
     override fun toString(): String {
         return "groups: $th2Groups, interval: [$startTime, $endTime), state $state"
     }
 
-    private fun verify() {
+    private fun verifyAndSignal() {
         if (state.isEmpty()) {
             lock.withLock { condition.signalAll() }
         }
