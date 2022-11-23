@@ -49,15 +49,13 @@ class MessageCrawler(
             "Incorrect configuration parameters: the ${configuration.th2Groups} `th2 groups` option is empty"
         }
 
+        // FIXME: if connection is be broken, subscribtion doesn't recover (exclusive queue specific)
         monitor = messageRouter.subscribeExclusive { _, batch ->
             controller.actual(batch)
         }
     }
 
-    /**
-     * @return true if the current iteration process interval otherwise false
-     */
-    fun process(from: Instant, to: Instant): Boolean {
+    fun process(from: Instant, to: Instant) {
         controller = MessageController(
             processor,
             groupSet,
@@ -87,8 +85,6 @@ class MessageCrawler(
                 }
                 controller = DummyMessageController.INSTANT
             }
-
-        return true
     }
 
     override fun close() {

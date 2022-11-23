@@ -38,7 +38,7 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
-class TestMessageController {
+internal class TestMessageController {
 
     private lateinit var processor: IProcessor
     private lateinit var messageController: MessageController

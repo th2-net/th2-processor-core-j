@@ -128,6 +128,11 @@ class ProcessorCommand(
         check(configuration.awaitTimeout > 0) {
             "Incorrect configuration parameters: the ${configuration.awaitTimeout} `await timeout` option isn't positive"
         }
+
+        check(!configuration.enableStoreState || configuration.stateSessionAlias.isNotBlank()) {
+            "Incorrect configuration parameters: the ${configuration.stateSessionAlias} `state session alias` option is blank, " +
+                    "the `enable store state` is ${configuration.enableStoreState}"
+        }
     }
 
     fun run() {
@@ -179,12 +184,17 @@ class ProcessorCommand(
     }
 
     private fun storeState(serializeState: ByteArray) {
-        //TODO:
-        K_LOGGER.warn { "Store state method isn't implemented" }
+        if (configuration.enableStoreState) {
+            //TODO:
+            K_LOGGER.warn { "Store state method isn't implemented" }
+        }
     }
 
     private fun recoverState(): ByteArray? {
-        K_LOGGER.warn { "Recover state method isn't implemented" }
+        if (configuration.enableStoreState) {
+            //TODO:
+            K_LOGGER.warn { "Recover state method isn't implemented" }
+        }
         return null
     }
     private fun createProcessor(
