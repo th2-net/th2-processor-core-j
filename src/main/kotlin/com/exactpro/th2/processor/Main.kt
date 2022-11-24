@@ -136,6 +136,7 @@ class ProcessorCommand(
     }
 
     fun run() {
+
         when(configuration.type) {
             MESSAGE_GROUP -> processMessages()
             EVENT -> processEvents()
