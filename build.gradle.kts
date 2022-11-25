@@ -44,7 +44,8 @@ repositories {
 dependencies {
     api(platform("com.exactpro.th2:bom:4.0.2"))
 
-    implementation("com.exactpro.th2:common:3.42.0-TH2-4262-reduce-load-on-a-separate-boxes-in-crawler-schema-3515227746-SNAPSHOT")
+    implementation("com.exactpro.th2:grpc-common:4.0.0-th2-2150-books-pages-2635598705-SNAPSHOT")
+    implementation("com.exactpro.th2:common:3.42.0-TH2-4262-reduce-load-on-a-separate-boxes-in-crawler-schema-3515227746-SNAPSHOT") // FIXME: migrate to book and page
 //    implementation("com.exactpro.th2:common-utils:0.0.1-dev-3497139120-SNAPSHOT")
     implementation("com.exactpro.th2:common-utils:0.0.1") // FIXME: local depenendency
     implementation("com.exactpro.th2:grpc-lw-data-provider:2.0.0-th2-3834-refactor-3541308940-SNAPSHOT")
@@ -57,6 +58,7 @@ dependencies {
     testImplementation("org.mockito.kotlin:mockito-kotlin:4.0.0")
 
     testImplementation("org.junit.jupiter:junit-jupiter-api:5.9.0")
+    testImplementation("org.junit.jupiter:junit-jupiter-params:5.9.0")
     testRuntimeOnly("org.junit.jupiter:junit-jupiter:5.9.0")
 }
 

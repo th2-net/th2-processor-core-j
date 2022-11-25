@@ -19,8 +19,8 @@ package com.exactpro.th2.processor.core.state
 import com.exactpro.th2.common.grpc.MessageGroupBatch
 import com.exactpro.th2.common.schema.message.MessageRouter
 import com.exactpro.th2.common.utils.message.toTimestamp
-import com.exactpro.th2.dataprovider.grpc.DataProviderService
-import com.exactpro.th2.dataprovider.grpc.MessageSearchResponse
+import com.exactpro.th2.dataprovider.lw.grpc.DataProviderService
+import com.exactpro.th2.dataprovider.lw.grpc.MessageSearchResponse
 import com.exactpro.th2.processor.core.state.DataProviderStateStorage.Companion.METADATA_SIZE
 import com.exactpro.th2.processor.core.state.DataProviderStateStorage.Companion.MIN_STATE_SIZE
 import com.exactpro.th2.processor.core.state.StateType.Companion.METADATA_STATE_TYPE_PROPERTY
@@ -362,9 +362,9 @@ internal class TestDataProviderStateStorage {
                 messageBuilder.apply {
                     rawMessageBuilder.apply {
                         metadataBuilder.apply {
-                            this.timestamp = timestamp
                             putProperties(METADATA_STATE_TYPE_PROPERTY, stateType.name)
                             idBuilder.apply {
+                                this.timestamp = timestamp
                                 this.sequence = sequence
                                 connectionIdBuilder.apply {
                                     sessionAlias = STATE_SESSION_ALIAS

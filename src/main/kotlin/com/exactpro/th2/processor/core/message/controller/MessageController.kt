@@ -21,13 +21,13 @@ import com.exactpro.th2.common.grpc.AnyMessage.KindCase.MESSAGE
 import com.exactpro.th2.common.grpc.AnyMessage.KindCase.RAW_MESSAGE
 import com.exactpro.th2.common.grpc.MessageGroupBatch
 import com.exactpro.th2.common.message.logId
-import com.exactpro.th2.common.utils.message.timestamp
 import com.exactpro.th2.processor.api.IProcessor
 import com.exactpro.th2.processor.core.Controller
 import com.exactpro.th2.processor.core.message.controller.state.StateUpdater
 import com.exactpro.th2.processor.utility.compare
 import com.exactpro.th2.processor.utility.ifFalse
 import com.exactpro.th2.processor.utility.ifTrue
+import com.exactpro.th2.processor.utility.timestamp
 import com.google.protobuf.Timestamp
 import com.google.protobuf.util.Timestamps.toString
 import mu.KotlinLogging

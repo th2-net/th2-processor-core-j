@@ -23,6 +23,13 @@ import com.exactpro.th2.common.message.sessionGroup
 import com.google.protobuf.Timestamp
 
 //TODO: move to common-util
+val AnyMessageOrBuilder.timestamp: Timestamp
+    get() = when {
+        hasMessage() -> message.metadata.id.timestamp
+        hasRawMessage() -> rawMessage.metadata.id.timestamp
+        else -> error("Unsupported message kind: $kindCase")
+    }
+
 val AnyMessage.book: String
     get() = when (kindCase) {
         AnyMessage.KindCase.MESSAGE -> message.metadata.id.bookName
@@ -30,7 +37,6 @@ val AnyMessage.book: String
         else -> error("Unsupported message kind: $kindCase")
     }
 
-//TODO: move to common-util
 val AnyMessageOrBuilder.group: String
     get() = when {
         hasMessage() -> message.sessionGroup.ifBlank { message.sessionAlias }
@@ -38,7 +44,6 @@ val AnyMessageOrBuilder.group: String
         else -> error("Unsupported message kind: $kindCase")
     }
 
-//TODO: move to common-util
 fun Timestamp.compare(another: Timestamp): Int {
     val secDiff = seconds.compareTo(another.seconds)
     return if (secDiff != 0) secDiff else nanos.compareTo(another.nanos)
