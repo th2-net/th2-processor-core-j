@@ -24,12 +24,13 @@ import com.exactpro.th2.common.metrics.registerReadiness
 import com.exactpro.th2.common.schema.factory.CommonFactory
 import com.exactpro.th2.common.schema.message.MessageRouter
 import com.exactpro.th2.common.utils.event.EventBatcher
-import com.exactpro.th2.dataprovider.grpc.DataProviderService
+import com.exactpro.th2.common.utils.message.toTimestamp
+import com.exactpro.th2.dataprovider.lw.grpc.QueueDataProviderService
 import com.exactpro.th2.processor.api.IProcessor
 import com.exactpro.th2.processor.api.IProcessorFactory
 import com.exactpro.th2.processor.core.configuration.Configuration
-import com.exactpro.th2.processor.core.configuration.DataType.*
-import com.exactpro.th2.processor.core.message.MessageCrawler
+import com.exactpro.th2.processor.core.message.createMessageIntervalProcessor
+import com.exactpro.th2.processor.core.state.CrawlerState
 import com.exactpro.th2.processor.utility.load
 import mu.KotlinLogging
 import java.time.Duration
@@ -101,7 +102,7 @@ class ProcessorCommand(
         }
     }
     private val messageRouter = commonFactory.messageRouterMessageGroupBatch
-    private val dataProvider = commonFactory.grpcRouter.getService(DataProviderService::class.java)
+    private val dataProvider = commonFactory.grpcRouter.getService(QueueDataProviderService::class.java)
 
     private val rootEventId: EventID = requireNotNull(commonFactory.rootEventId) {
         "Common's root event id can not be null"
@@ -133,13 +134,19 @@ class ProcessorCommand(
             "Incorrect configuration parameters: the ${configuration.stateSessionAlias} `state session alias` option is blank, " +
                     "the `enable store state` is ${configuration.enableStoreState}"
         }
+
+        check((configuration.messages != null) xor (configuration.events != null)) {
+            "Incorrect configuration parameters: " +
+                    "both or neither of ${configuration.messages} `messages`, ${configuration.events} `events` options are filled. " +
+                    "Processor can work in one mode only"
+        }
     }
 
     fun run() {
 
-        when(configuration.type) {
-            MESSAGE_GROUP -> processMessages()
-            EVENT -> processEvents()
+        when {
+            configuration.messages != null -> processMessages()
+            configuration.events != null -> processEvents()
         }
     }
 
@@ -156,20 +163,22 @@ class ProcessorCommand(
                 .also(eventRouter::sendAll)
                 .run { getEvents(0).id }
 
-            val state: ByteArray? = recoverState()
+            val crawlerState = recoverState()
 
-            MessageCrawler(
+
+            val processor = createProcessor(configuration, processorEventId, crawlerState.processorState)
+            createMessageIntervalProcessor(
                 messageRouter,
                 dataProvider,
                 configuration,
-                createProcessor(configuration, processorEventId, state)
+                processor
             ).use { crawler ->
                 K_LOGGER.info { "Processing started" }
                 readiness.enable()
 
                 do {
-                    crawler.process(currentFrom, currentTo)
-                    storeState(crawler.serializeState())
+                    crawler.processInterval(currentFrom.toTimestamp(), currentTo.toTimestamp())
+                    storeState(CrawlerState(currentTo, processor.serializeState()))
 
                     currentFrom = currentTo
                     currentTo = currentFrom.doStep()
@@ -184,19 +193,19 @@ class ProcessorCommand(
         }
     }
 
-    private fun storeState(serializeState: ByteArray) {
+    private fun storeState(crawlerState: CrawlerState) {
         if (configuration.enableStoreState) {
             //TODO:
             K_LOGGER.warn { "Store state method isn't implemented" }
         }
     }
 
-    private fun recoverState(): ByteArray? {
+    private fun recoverState(): CrawlerState {
         if (configuration.enableStoreState) {
             //TODO:
             K_LOGGER.warn { "Recover state method isn't implemented" }
         }
-        return null
+        return CrawlerState(Instant.MIN, null)
     }
     private fun createProcessor(
         configuration: Configuration,

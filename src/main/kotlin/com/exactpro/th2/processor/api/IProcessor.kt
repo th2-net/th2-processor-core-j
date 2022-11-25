@@ -16,13 +16,17 @@
 
 package com.exactpro.th2.processor.api
 
+import com.exactpro.th2.common.grpc.Event
 import com.exactpro.th2.common.grpc.Message
+import com.exactpro.th2.common.grpc.RawMessage
 import javax.annotation.concurrent.ThreadSafe
 
 @ThreadSafe
 interface IProcessor : AutoCloseable {
 
     fun handle(message: Message)
+    fun handle(message: RawMessage)
+    fun handle(message: Event)
 
     fun serializeState(): ByteArray? = null
 }

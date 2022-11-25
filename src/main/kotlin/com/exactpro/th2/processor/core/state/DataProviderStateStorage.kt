@@ -23,9 +23,9 @@ import com.exactpro.th2.common.message.plusAssign
 import com.exactpro.th2.common.message.sequence
 import com.exactpro.th2.common.message.toTimestamp
 import com.exactpro.th2.common.schema.message.MessageRouter
-import com.exactpro.th2.dataprovider.grpc.DataProviderService
-import com.exactpro.th2.dataprovider.grpc.MessageSearchRequest
-import com.exactpro.th2.dataprovider.grpc.TimeRelation.PREVIOUS
+import com.exactpro.th2.dataprovider.lw.grpc.DataProviderService
+import com.exactpro.th2.dataprovider.lw.grpc.MessageSearchRequest
+import com.exactpro.th2.dataprovider.lw.grpc.TimeRelation.PREVIOUS
 import com.exactpro.th2.processor.core.state.StateType.Companion.METADATA_STATE_TYPE_PROPERTY
 import com.exactpro.th2.processor.core.state.StateType.END
 import com.exactpro.th2.processor.core.state.StateType.INTERMEDIATE
@@ -36,6 +36,7 @@ import com.google.protobuf.Int32Value
 import com.google.protobuf.TextFormat.shortDebugString
 import com.google.protobuf.Timestamp
 import com.google.protobuf.util.Timestamps
+import com.google.protobuf.util.Timestamps.toString
 import mu.KotlinLogging
 import java.time.Instant
 import javax.annotation.concurrent.NotThreadSafe
@@ -80,7 +81,7 @@ class DataProviderStateStorage(
                 val message = iterator.next().message.rawMessage
                 yield(message)
                 if (!iterator.hasNext()) {
-                    iterator = dataProvider.searchMessages(createSearchRequest(message.metadata.timestamp).also {
+                    iterator = dataProvider.searchMessages(createSearchRequest(message.metadata.id.timestamp).also {
                         K_LOGGER.info { "Request to load state ${shortDebugString(it)}" }
                     })
                 }
@@ -164,9 +165,9 @@ class DataProviderStateStorage(
                 this += RawMessage.newBuilder().apply {
                     body = ByteString.copyFrom(this@createMessageBatch)
                     metadataBuilder.apply {
-                        timestamp = stateTimestamp
                         putProperties(METADATA_STATE_TYPE_PROPERTY, stateType.name)
                         idBuilder.apply {
+                            this.timestamp = stateTimestamp
                             this.direction = SECOND
                             this.sequence = sequence
                             connectionIdBuilder.apply {
@@ -190,7 +191,7 @@ class DataProviderStateStorage(
                             clear()
                             return false
                         }
-                        if (Timestamps.compare(message.metadata.timestamp, lastMessage.metadata.timestamp) != 0) {
+                        if (Timestamps.compare(message.metadata.id.timestamp, lastMessage.metadata.id.timestamp) != 0) {
                             K_LOGGER.warn { "Dropped broken by timestamp state ${reversed().logState}, current message ${pair.log}" }
                             clear()
                             return false
@@ -222,6 +223,6 @@ class DataProviderStateStorage(
             get() = joinToString(",", "[", "]") { pair -> pair.log }
 
         private val Pair<StateType, RawMessage>.log: String
-            get() = "${Timestamps.toString(second.metadata.timestamp)} - ${second.logId} ($first)"
+            get() = "${toString(second.metadata.id.timestamp)} - ${second.logId} ($first)"
     }
 }

@@ -16,12 +16,28 @@
 
 package com.exactpro.th2.processor.core.message.controller
 
+import com.exactpro.th2.common.grpc.EventBatch
 import com.exactpro.th2.common.grpc.MessageGroupBatch
-import com.exactpro.th2.dataprovider.grpc.MessageIntervalInfo
-import java.util.concurrent.TimeUnit
+import com.exactpro.th2.common.schema.message.toShortDebugString
+import com.exactpro.th2.processor.core.controller.Controller
+import com.exactpro.th2.processor.utility.toShortDebugString
+import mu.KotlinLogging
 
-interface IMessageController {
-    fun actual(batch: MessageGroupBatch)
-    fun expected(intervalInfo: MessageIntervalInfo)
-    fun await(time: Long, unit: TimeUnit): Boolean
+class DummyController : Controller() {
+
+    override val isStateEmpty: Boolean = true
+
+    override fun actual(batch: MessageGroupBatch) {
+        K_LOGGER.debug { "Skip ${batch.toShortDebugString()}" }
+    }
+
+    override fun actual(batch: EventBatch) {
+        K_LOGGER.debug { "Skip ${batch.toShortDebugString()}" }
+    }
+
+    companion object {
+        private val K_LOGGER = KotlinLogging.logger {}
+
+        val INSTANT = DummyController()
+    }
 }
