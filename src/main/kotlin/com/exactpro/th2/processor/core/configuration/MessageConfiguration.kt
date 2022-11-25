@@ -21,7 +21,5 @@ import com.exactpro.th2.common.grpc.AnyMessage.KindCase.MESSAGE
 
 class MessageConfiguration @JvmOverloads constructor(
     val messageKind: AnyMessage.KindCase = MESSAGE,
-    val bookToGroups: Map<String, Set<String>>? = null,
-    val bookToSessionAliases: Map<String, Set<String>>? = null,
-) {
-}
+    val bookToGroups: Map<String, Set<String>>,
+)

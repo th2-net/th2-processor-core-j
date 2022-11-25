@@ -19,6 +19,7 @@ package com.exactpro.th2.processor
 import com.exactpro.th2.common.event.Event
 import com.exactpro.th2.common.grpc.EventBatch
 import com.exactpro.th2.common.grpc.EventID
+import com.exactpro.th2.common.grpc.MessageGroupBatch
 import com.exactpro.th2.common.metrics.registerLiveness
 import com.exactpro.th2.common.metrics.registerReadiness
 import com.exactpro.th2.common.schema.factory.CommonFactory
@@ -28,10 +29,13 @@ import com.exactpro.th2.common.utils.message.toTimestamp
 import com.exactpro.th2.dataprovider.lw.grpc.QueueDataProviderService
 import com.exactpro.th2.processor.api.IProcessor
 import com.exactpro.th2.processor.api.IProcessorFactory
+import com.exactpro.th2.processor.core.Crawler
 import com.exactpro.th2.processor.core.configuration.Configuration
-import com.exactpro.th2.processor.core.message.createMessageIntervalProcessor
+import com.exactpro.th2.processor.core.event.EventCrawler
+import com.exactpro.th2.processor.core.message.GroupMessageCrawler
 import com.exactpro.th2.processor.core.state.CrawlerState
 import com.exactpro.th2.processor.utility.load
+import com.google.protobuf.Message
 import mu.KotlinLogging
 import java.time.Duration
 import java.time.Instant
@@ -143,55 +147,96 @@ class ProcessorCommand(
     }
 
     fun run() {
-
-        when {
-            configuration.messages != null -> processMessages()
-            configuration.events != null -> processEvents()
-        }
-    }
-
-    private fun processEvents() {
-        TODO("Not yet implemented")
-    }
-
-    private fun processMessages() {
         try {
-            val processorEventId = Event.start()
-                .name("Message processor started ${Instant.now()}")
-                .type("Message processor start")
-                .toBatchProto(rootEventId)
-                .also(eventRouter::sendAll)
-                .run { getEvents(0).id }
+            if (configuration.messages != null && configuration.events != null) {
+                error("Incorrect configuration parameters: " +
+                        "Both of `messages`, `events` options are filled. " +
+                        "Processor can work in one mode only")
+            }
 
-            val crawlerState = recoverState()
-
-
-            val processor = createProcessor(configuration, processorEventId, crawlerState.processorState)
-            createMessageIntervalProcessor(
-                messageRouter,
-                dataProvider,
-                configuration,
-                processor
-            ).use { crawler ->
-                K_LOGGER.info { "Processing started" }
-                readiness.enable()
-
-                do {
-                    crawler.processInterval(currentFrom.toTimestamp(), currentTo.toTimestamp())
-                    storeState(CrawlerState(currentTo, processor.serializeState()))
-
-                    currentFrom = currentTo
-                    currentTo = currentFrom.doStep()
-                    if (currentFrom == currentTo) {
-                        K_LOGGER.info { "Processing completed" }
-                        break
-                    }
-                } while (true)
+            when {
+                configuration.messages != null -> processMessages()
+                configuration.events != null -> processEvents()
+                else -> error("Neither of `messages`, `events` options are filled. " +
+                        "Processor must work in any mode")
             }
         } finally {
             readiness.disable()
         }
     }
+
+    private fun processEvents() {
+        //TODO: extract common part
+        val processorEventId = Event.start()
+            .name("Event processor started ${Instant.now()}")
+            .type("Event processor start")
+            .toBatchProto(rootEventId)
+            .also(eventRouter::sendAll)
+            .run { getEvents(0).id }
+
+        val crawlerState = recoverState()
+        val processor = createProcessor(configuration, processorEventId, crawlerState.processorState)
+
+        createEventIntervalProcessor(
+            eventRouter,
+            dataProvider,
+            configuration,
+            processor
+        ).use(::process)
+    }
+
+    private fun processMessages() {
+        //TODO: extract common part
+        val processorEventId = Event.start()
+            .name("Message processor started ${Instant.now()}")
+            .type("Message processor start")
+            .toBatchProto(rootEventId)
+            .also(eventRouter::sendAll)
+            .run { getEvents(0).id }
+
+        val crawlerState = recoverState()
+        val processor = createProcessor(configuration, processorEventId, crawlerState.processorState)
+
+        createMessageIntervalProcessor(
+            messageRouter,
+            dataProvider,
+            configuration,
+            processor
+        ).use(::process)
+    }
+
+    private fun <T: Message> process(
+        crawler: Crawler<T>
+    ) {
+        K_LOGGER.info { "Processing started" }
+        readiness.enable()
+
+        do {
+            crawler.processInterval(currentFrom.toTimestamp(), currentTo.toTimestamp())
+            storeState(CrawlerState(currentTo, crawler.serializeState()))
+
+            currentFrom = currentTo
+            currentTo = currentFrom.doStep()
+            if (currentFrom == currentTo) {
+                K_LOGGER.info { "Processing completed" }
+                break
+            }
+        } while (true)
+    }
+
+    private fun createEventIntervalProcessor(
+        eventRouter: MessageRouter<EventBatch>,
+        dataProvider: QueueDataProviderService,
+        configuration: Configuration,
+        processor: IProcessor
+    ): EventCrawler = EventCrawler(eventRouter, dataProvider, configuration, processor)
+
+    private fun createMessageIntervalProcessor (
+        messageRouter: MessageRouter<MessageGroupBatch>,
+        dataProvider: QueueDataProviderService,
+        configuration: Configuration,
+        processor: IProcessor,
+    ): Crawler<MessageGroupBatch> = GroupMessageCrawler(messageRouter, dataProvider, configuration, processor)
 
     private fun storeState(crawlerState: CrawlerState) {
         if (configuration.enableStoreState) {

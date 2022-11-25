@@ -14,19 +14,10 @@
  * limitations under the License.
  */
 
-package com.exactpro.th2.processor.utility
+package com.exactpro.th2.processor.core.event.controller.state
 
 import com.exactpro.th2.common.grpc.Event
-import com.exactpro.th2.common.grpc.EventID
-import com.google.protobuf.util.Timestamps
 
-// TODO: move to common-util
-val EventID.logId: String
-    get() = "${bookName}:${scope}:${Timestamps.toString(startTimestamp)}:${id}"
-val Event.logId: String
-    get() = id.logId + (if (hasParentId()) " -> ${parentId.logId}" else "")
-val Event.book: String
-    get() = id.bookName
-
-val Event.scope: String
-    get() = id.scope
+internal interface StateUpdater {
+    fun update(event: Event)
+}

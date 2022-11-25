@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package com.exactpro.th2.processor.core.message.strategy
+package com.exactpro.th2.processor.core.message
 
 import com.exactpro.th2.common.grpc.MessageGroupBatch
 import com.exactpro.th2.common.schema.message.MessageRouter
@@ -22,8 +22,8 @@ import com.exactpro.th2.dataprovider.lw.grpc.MessageGroupsQueueSearchRequest
 import com.exactpro.th2.dataprovider.lw.grpc.MessageGroupsQueueSearchRequest.BookGroups
 import com.exactpro.th2.dataprovider.lw.grpc.QueueDataProviderService
 import com.exactpro.th2.processor.api.IProcessor
+import com.exactpro.th2.processor.core.Crawler
 import com.exactpro.th2.processor.core.configuration.Configuration
-import com.exactpro.th2.processor.core.message.controller.DummyController
 import com.exactpro.th2.processor.core.message.controller.GroupController
 import com.google.protobuf.TextFormat.shortDebugString
 import com.google.protobuf.Timestamp
@@ -31,15 +31,16 @@ import mu.KotlinLogging
 
 internal class GroupMessageCrawler(
     messageRouter: MessageRouter<MessageGroupBatch>,
-    dataProvider: QueueDataProviderService,
-    processor: IProcessor,
-    configuration: Configuration
-) : MessageCrawler(
+    private val dataProvider: QueueDataProviderService,
+    configuration: Configuration,
+    processor: IProcessor
+) : Crawler<MessageGroupBatch>(
     messageRouter,
-    dataProvider,
-    processor,
-    configuration
+    configuration,
+    processor
 ) {
+    private val messageKind = requireNotNull(configuration.messages).messageKind
+
     private val bookToGroups = requireNotNull(
         requireNotNull(configuration.messages).bookToGroups
     ).also {
@@ -57,7 +58,7 @@ internal class GroupMessageCrawler(
         }.build()
     }
 
-    override fun processInterval(from: Timestamp, to: Timestamp) {
+    override fun process(from: Timestamp, to: Timestamp) {
         controller = GroupController(processor, from, to, messageKind, bookToGroups)
 
         val request = MessageGroupsQueueSearchRequest.newBuilder().apply {
@@ -76,10 +77,8 @@ internal class GroupMessageCrawler(
                 check(controller.await(awaitTimeout, awaitUnit)) {
                     "Quantification failure after ($awaitTimeout:$awaitUnit waiting, controller $controller)"
                 }
-                controller = DummyController.INSTANT
             }
     }
-
     companion object {
         private val K_LOGGER = KotlinLogging.logger {}
     }

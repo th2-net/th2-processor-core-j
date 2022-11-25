@@ -14,33 +14,33 @@
  * limitations under the License.
  */
 
-package com.exactpro.th2.processor.core.message.controller.state
+package com.exactpro.th2.processor.core.event.controller.state
 
-import com.exactpro.th2.common.grpc.AnyMessage
-import com.exactpro.th2.dataprovider.lw.grpc.LoadedStatistic
-import com.exactpro.th2.dataprovider.lw.grpc.MessageGroupsSearchRequest
-import com.exactpro.th2.processor.utility.group
+import com.exactpro.th2.common.grpc.Event
+import com.exactpro.th2.dataprovider.lw.grpc.EventLoadedStatistic
+import com.exactpro.th2.dataprovider.lw.grpc.EventScope
+import com.exactpro.th2.processor.utility.scope
 import com.google.protobuf.TextFormat.shortDebugString
 import mu.KotlinLogging
 import java.util.concurrent.ConcurrentHashMap
 
 //TODO: Extract common part
-internal class GroupState {
-    private val groupToNumber = ConcurrentHashMap<String, Long>()
+internal class EventState {
+    private val bookAndScopeToNumber = ConcurrentHashMap<String, Long>()
     val isStateEmpty: Boolean
-        get() = groupToNumber.isEmpty()
+        get() = bookAndScopeToNumber.isEmpty()
 
     fun plus(func: StateUpdater.() -> Unit): Boolean {
         val temporaryState = mutableMapOf<String, Long>()
         object : StateUpdater {
-            override fun update(anyMessage: AnyMessage) {
-                temporaryState.compute(anyMessage.group) { _, current -> (current ?: 0L) + 1 }
+            override fun update(event: Event) {
+                temporaryState.compute(event.scope) { _, current -> (current ?: 0L) + 1 }
             }
         }.func()
 
         var needCheck = false
         temporaryState.forEach { (group, count) ->
-            groupToNumber.compute(group) { _, previous ->
+            bookAndScopeToNumber.compute(group) { _, previous ->
                 when (val result = (previous ?: 0L) + count) {
                     0L -> {
                         needCheck = true
@@ -52,23 +52,23 @@ internal class GroupState {
             }
         }
 
-        K_LOGGER.debug { "Plus operation executed: delta = $temporaryState, state = $groupToNumber, need check = $needCheck" }
+        K_LOGGER.debug { "Plus operation executed: delta = $temporaryState, state = $bookAndScopeToNumber, need check = $needCheck" }
         return needCheck && isStateEmpty
     }
 
-    fun minus(loadedStatistic: LoadedStatistic): Boolean {
+    fun minus(eventLoadedStatistic: EventLoadedStatistic): Boolean {
         var needCheck = false
-        loadedStatistic.statList.forEach { groupStat ->
-            val group = groupStat.group
-            check(group !== MessageGroupsSearchRequest.Group.getDefaultInstance()) {
-                "Group statistic has not got information about group. ${shortDebugString(groupStat)}"
+        eventLoadedStatistic.statList.forEach { scopeStat ->
+            val scope = scopeStat.scope
+            check(scope !== EventScope.getDefaultInstance()) {
+                "Scope statistic has not got information about scope. ${shortDebugString(scopeStat)}"
             }
-            check(group.name.isNotBlank()) {
-                "Group statistic has empty group name. ${shortDebugString(groupStat)}"
+            check(scope.name.isNotBlank()) {
+                "Scope statistic has empty Scope name. ${shortDebugString(scopeStat)}"
             }
 
-            groupToNumber.compute(group.name) { _, previous ->
-                when (val result = (previous ?: 0L) - groupStat.count) {
+            bookAndScopeToNumber.compute(scope.name) { _, previous ->
+                when (val result = (previous ?: 0L) - scopeStat.count) {
                     0L -> {
                         needCheck = true
                         null
@@ -78,7 +78,7 @@ internal class GroupState {
             }
         }
 
-        K_LOGGER.debug { "Minus operation executed: ${shortDebugString(loadedStatistic)}, state = $groupToNumber, need check = $needCheck" }
+        K_LOGGER.debug { "Minus operation executed: ${shortDebugString(eventLoadedStatistic)}, state = $bookAndScopeToNumber, need check = $needCheck" }
         return needCheck && isStateEmpty
     }
 

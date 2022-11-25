@@ -34,7 +34,7 @@ internal class GroupController(
     startTime: Timestamp,
     endTime: Timestamp,
     kind: AnyMessage.KindCase,
-    private val bootToGroups: Map<String, Set<String>>
+    private val bookToGroups: Map<String, Set<String>>
 ) : MessageController(
     processor,
     startTime,
@@ -53,11 +53,12 @@ internal class GroupController(
     }
 
     override fun messageCheck(anyMessage: AnyMessage): Boolean = super.messageCheck(anyMessage)
-            || (bootToGroups[anyMessage.book]?.contains(anyMessage.group) ?: false).ifFalse {
-                    K_LOGGER.warn {
-                        "unexpected message ${anyMessage.logId}, book ${anyMessage.book}, group ${anyMessage.group}"
+            && (bookToGroups[anyMessage.book]?.contains(anyMessage.group) ?: false)
+                    .ifFalse {
+                        K_LOGGER.warn {
+                            "unexpected message ${anyMessage.logId}, book ${anyMessage.book}, group ${anyMessage.group}"
+                        }
                     }
-    }
 
     companion object {
         private val K_LOGGER = KotlinLogging.logger {}

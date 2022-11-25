@@ -14,34 +14,29 @@
  * limitations under the License.
  */
 
-package com.exactpro.th2.processor.core.message.strategy
+package com.exactpro.th2.processor.core
 
-import com.exactpro.th2.common.grpc.MessageGroupBatch
 import com.exactpro.th2.common.schema.message.ExclusiveSubscriberMonitor
 import com.exactpro.th2.common.schema.message.MessageRouter
-import com.exactpro.th2.dataprovider.lw.grpc.QueueDataProviderService
 import com.exactpro.th2.processor.api.IProcessor
 import com.exactpro.th2.processor.core.configuration.Configuration
-import com.exactpro.th2.processor.core.message.controller.DummyController
-import com.exactpro.th2.processor.core.controller.Controller
+import com.google.protobuf.Message
 import com.google.protobuf.Timestamp
 
-abstract class MessageCrawler (
-    messageRouter: MessageRouter<MessageGroupBatch>,
-    protected val dataProvider: QueueDataProviderService,
-    protected val processor: IProcessor,
+abstract class Crawler<T : Message>(
+    messageRouter: MessageRouter<T>,
     configuration: Configuration,
+    protected val processor: IProcessor
 ) : AutoCloseable {
 
     private val monitor: ExclusiveSubscriberMonitor
+    private val dummyController: Controller<T> = DummyController()
 
     protected val queue: String
     protected val awaitTimeout = configuration.awaitTimeout
-    protected val awaitUnit = configuration.awaitUnit
-    protected val messageKind = requireNotNull(configuration.messages).messageKind
 
-    @Volatile
-    protected var controller: Controller = DummyController.INSTANT
+    protected val awaitUnit = configuration.awaitUnit
+    protected var controller: Controller<T> = dummyController
 
     init {
         // FIXME: if connection is be broken, subscribtion doesn't recover (exclusive queue specific)
@@ -51,9 +46,19 @@ abstract class MessageCrawler (
         queue = monitor.queue
     }
 
-    abstract fun processInterval(from: Timestamp, to: Timestamp)
+    fun processInterval(from: Timestamp, to: Timestamp) {
+        try {
+            process(from, to)
+        } finally {
+            controller = dummyController
+        }
+    }
+
+    fun serializeState(): ByteArray? = processor.serializeState()
 
     override fun close() {
         monitor.unsubscribe()
     }
+
+    protected abstract fun process(from: Timestamp, to: Timestamp)
 }

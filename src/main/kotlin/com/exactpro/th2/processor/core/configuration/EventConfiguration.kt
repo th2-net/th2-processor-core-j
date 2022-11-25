@@ -16,5 +16,6 @@
 
 package com.exactpro.th2.processor.core.configuration
 
-class EventConfiguration {
-}
+class EventConfiguration (
+    val bookToScopes: Map<String, Set<String>>
+)

@@ -14,12 +14,11 @@
  * limitations under the License.
  */
 
-package com.exactpro.th2.processor.core.controller
+package com.exactpro.th2.processor.core
 
-import com.exactpro.th2.common.grpc.EventBatch
-import com.exactpro.th2.common.grpc.MessageGroupBatch
 import com.exactpro.th2.dataprovider.lw.grpc.EventLoadedStatistic
 import com.exactpro.th2.dataprovider.lw.grpc.LoadedStatistic
+import com.google.protobuf.Message
 import com.google.protobuf.Timestamp
 import com.google.protobuf.util.Timestamps
 import mu.KotlinLogging
@@ -27,7 +26,7 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
 
-abstract class Controller {
+abstract class Controller<T: Message> {
     /**
      * Controller updates this marker on each actual processed message which passed precondition
      */
@@ -37,12 +36,7 @@ abstract class Controller {
     private val condition = lock.newCondition()
 
     abstract val isStateEmpty: Boolean
-    open fun actual(batch: MessageGroupBatch) {
-        throw UnsupportedOperationException()
-    }
-    open fun actual(batch: EventBatch) {
-        throw UnsupportedOperationException()
-    }
+    abstract fun actual(batch: T)
     open fun expected(loadedStatistic: LoadedStatistic) {
         throw UnsupportedOperationException()
     }

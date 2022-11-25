@@ -23,7 +23,7 @@ import com.exactpro.th2.common.grpc.MessageGroupBatch
 import com.exactpro.th2.common.message.logId
 import com.exactpro.th2.common.utils.message.timestamp
 import com.exactpro.th2.processor.api.IProcessor
-import com.exactpro.th2.processor.core.controller.Controller
+import com.exactpro.th2.processor.core.Controller
 import com.exactpro.th2.processor.core.message.controller.state.StateUpdater
 import com.exactpro.th2.processor.utility.compare
 import com.exactpro.th2.processor.utility.ifFalse
@@ -39,7 +39,7 @@ internal abstract class MessageController(
     private val startTime: Timestamp,
     private val endTime: Timestamp,
     protected val kind: AnyMessage.KindCase
-) : Controller() {
+) : Controller<MessageGroupBatch>() {
     override fun actual(batch: MessageGroupBatch) {
         updateState {
             for (group in batch.groupsList) {
@@ -62,13 +62,15 @@ internal abstract class MessageController(
     protected abstract fun updateState(func: StateUpdater.() -> Unit): Boolean
     protected open fun messageCheck(anyMessage: AnyMessage): Boolean {
         val timestamp = anyMessage.timestamp
-        return (anyMessage.kindCase == kind).ifFalse {
+        return (anyMessage.kindCase == kind)
+                    .ifFalse {
                         K_LOGGER.warn {
                             "Incorrect message kind ${anyMessage.logId}, " +
                                     "actual ${anyMessage.kindCase}, expected $kind"
                         }
                     }
-                && (timestamp.compare(startTime) >= 0 && timestamp.compare(endTime) < 0).ifFalse {
+            && (timestamp.compare(startTime) >= 0 && timestamp.compare(endTime) < 0)
+                    .ifFalse {
                         K_LOGGER.warn {
                             "Out of interval message ${anyMessage.logId}, " +
                                     "actual ${toString(timestamp)}, " +

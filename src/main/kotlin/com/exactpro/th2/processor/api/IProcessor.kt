@@ -23,10 +23,8 @@ import javax.annotation.concurrent.ThreadSafe
 
 @ThreadSafe
 interface IProcessor : AutoCloseable {
-
     fun handle(message: Message)
     fun handle(message: RawMessage)
-    fun handle(message: Event)
-
+    fun handle(event: Event)
     fun serializeState(): ByteArray? = null
 }

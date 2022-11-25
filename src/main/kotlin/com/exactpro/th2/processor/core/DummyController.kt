@@ -14,19 +14,21 @@
  * limitations under the License.
  */
 
-package com.exactpro.th2.processor.utility
+package com.exactpro.th2.processor.core
 
-import com.exactpro.th2.common.grpc.Event
-import com.exactpro.th2.common.grpc.EventID
-import com.google.protobuf.util.Timestamps
+import com.google.protobuf.Message
+import com.google.protobuf.TextFormat.shortDebugString
+import mu.KotlinLogging
 
-// TODO: move to common-util
-val EventID.logId: String
-    get() = "${bookName}:${scope}:${Timestamps.toString(startTimestamp)}:${id}"
-val Event.logId: String
-    get() = id.logId + (if (hasParentId()) " -> ${parentId.logId}" else "")
-val Event.book: String
-    get() = id.bookName
+class DummyController<T: Message> : Controller<T>() {
 
-val Event.scope: String
-    get() = id.scope
+    override val isStateEmpty: Boolean = true
+
+    override fun actual(batch: T) {
+        K_LOGGER.debug { "Skip ${shortDebugString(batch)}" }
+    }
+
+    companion object {
+        private val K_LOGGER = KotlinLogging.logger {}
+    }
+}
