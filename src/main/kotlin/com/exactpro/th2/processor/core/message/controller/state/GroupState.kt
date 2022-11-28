@@ -17,24 +17,35 @@
 package com.exactpro.th2.processor.core.message.controller.state
 
 import com.exactpro.th2.common.grpc.AnyMessage
-import com.exactpro.th2.dataprovider.lw.grpc.LoadedStatistic
-import com.exactpro.th2.dataprovider.lw.grpc.MessageGroupsSearchRequest
+import com.exactpro.th2.common.message.logId
+import com.exactpro.th2.dataprovider.lw.grpc.MessageLoadedStatistic
+import com.exactpro.th2.dataprovider.lw.grpc.MessageLoadedStatistic.GroupStat
+import com.exactpro.th2.processor.utility.book
+import com.exactpro.th2.processor.utility.compare
 import com.exactpro.th2.processor.utility.group
+import com.exactpro.th2.processor.utility.timestamp
 import com.google.protobuf.TextFormat.shortDebugString
+import com.google.protobuf.Timestamp
+import com.google.protobuf.util.Timestamps
 import mu.KotlinLogging
 import java.util.concurrent.ConcurrentHashMap
 
 //TODO: Extract common part
-internal class GroupState {
-    private val groupToNumber = ConcurrentHashMap<String, Long>()
+internal class GroupState(
+    private val startTime: Timestamp,
+    private val endTime: Timestamp,
+    private val kind: AnyMessage.KindCase,
+    private val bookToGroups: Map<String, Set<String>>
+) {
+    private val groupToNumber = ConcurrentHashMap<StateKey, Long>()
     val isStateEmpty: Boolean
         get() = groupToNumber.isEmpty()
 
     fun plus(func: StateUpdater.() -> Unit): Boolean {
-        val temporaryState = mutableMapOf<String, Long>()
+        val temporaryState = mutableMapOf<StateKey, Long>()
         object : StateUpdater {
-            override fun update(anyMessage: AnyMessage) {
-                temporaryState.compute(anyMessage.group) { _, current -> (current ?: 0L) + 1 }
+            override fun updateState(anyMessage: AnyMessage) {
+                temporaryState.compute(anyMessage.toStateKey()) { _, current -> (current ?: 0L) + 1 }
             }
         }.func()
 
@@ -56,18 +67,11 @@ internal class GroupState {
         return needCheck && isStateEmpty
     }
 
-    fun minus(loadedStatistic: LoadedStatistic): Boolean {
+    fun minus(loadedStatistic: MessageLoadedStatistic): Boolean {
         var needCheck = false
         loadedStatistic.statList.forEach { groupStat ->
-            val group = groupStat.group
-            check(group !== MessageGroupsSearchRequest.Group.getDefaultInstance()) {
-                "Group statistic has not got information about group. ${shortDebugString(groupStat)}"
-            }
-            check(group.name.isNotBlank()) {
-                "Group statistic has empty group name. ${shortDebugString(groupStat)}"
-            }
 
-            groupToNumber.compute(group.name) { _, previous ->
+            groupToNumber.compute(groupStat.toStateKey()) { _, previous ->
                 when (val result = (previous ?: 0L) - groupStat.count) {
                     0L -> {
                         needCheck = true
@@ -82,7 +86,60 @@ internal class GroupState {
         return needCheck && isStateEmpty
     }
 
+    private fun AnyMessage.toStateKey(): StateKey {
+        check(kindCase == kind) {
+            "Incorrect message kind ${logId}, " +
+                    "actual ${kindCase}, expected $kind"
+        }
+
+        val timestamp = timestamp
+        check(timestamp.compare(startTime) >= 0 && timestamp.compare(endTime) < 0) {
+            "Out of interval message ${logId}, " +
+                    "actual ${Timestamps.toString(timestamp)}, " +
+                    "expected [${Timestamps.toString(startTime)} - ${Timestamps.toString(endTime)})"
+        }
+
+        val book = book
+        check(book.isNotBlank()) {
+            "Group statistic has empty book name. ${shortDebugString(this)}"
+        }
+        val group = group
+        check(group.isNotBlank()) {
+            "Group statistic has empty group name. ${shortDebugString(this)}"
+        }
+
+        check(bookToGroups[book]?.contains(group) ?: false) {
+            "Unexpected message ${logId}, book $book, group $group"
+        }
+
+        return StateKey(book, group)
+    }
+
+    private fun GroupStat.toStateKey(): StateKey {
+        check(hasBookId()) {
+            "Group statistic has not got information about book. ${shortDebugString(this)}"
+        }
+        check(bookId.name.isNotBlank()) {
+            "Group statistic has empty book name. ${shortDebugString(this)}"
+        }
+
+        check(hasGroup()) {
+            "Group statistic has not got information about group. ${shortDebugString(this)}"
+        }
+        check(group.name.isNotBlank()) {
+            "Group statistic has empty group name. ${shortDebugString(this)}"
+        }
+
+        check(bookToGroups[bookId.name]?.contains(group.name) ?: false) {
+            "Unexpected statistic for book ${bookId.name}, group ${group.name}. ${shortDebugString(this)}"
+        }
+
+        return StateKey(bookId.name, group.name)
+    }
+
     companion object {
         private val K_LOGGER = KotlinLogging.logger {}
+
+        private data class StateKey(val book: String, val group: String)
     }
 }

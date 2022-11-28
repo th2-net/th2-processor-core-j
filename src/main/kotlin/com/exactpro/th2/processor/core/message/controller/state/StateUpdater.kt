@@ -19,5 +19,5 @@ package com.exactpro.th2.processor.core.message.controller.state
 import com.exactpro.th2.common.grpc.AnyMessage
 
 internal interface StateUpdater {
-    fun update(anyMessage: AnyMessage)
+    fun updateState(anyMessage: AnyMessage)
 }

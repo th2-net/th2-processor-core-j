@@ -17,7 +17,7 @@
 package com.exactpro.th2.processor.core
 
 import com.exactpro.th2.dataprovider.lw.grpc.EventLoadedStatistic
-import com.exactpro.th2.dataprovider.lw.grpc.LoadedStatistic
+import com.exactpro.th2.dataprovider.lw.grpc.MessageLoadedStatistic
 import com.google.protobuf.Message
 import com.google.protobuf.Timestamp
 import com.google.protobuf.util.Timestamps
@@ -37,7 +37,7 @@ abstract class Controller<T: Message> {
 
     abstract val isStateEmpty: Boolean
     abstract fun actual(batch: T)
-    open fun expected(loadedStatistic: LoadedStatistic) {
+    open fun expected(loadedStatistic: MessageLoadedStatistic) {
         throw UnsupportedOperationException()
     }
     open fun expected(loadedStatistic: EventLoadedStatistic) {

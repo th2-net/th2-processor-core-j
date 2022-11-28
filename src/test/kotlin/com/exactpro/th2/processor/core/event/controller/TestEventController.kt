@@ -22,7 +22,7 @@ import com.exactpro.th2.common.grpc.Message
 import com.exactpro.th2.common.grpc.RawMessage
 import com.exactpro.th2.common.utils.message.toTimestamp
 import com.exactpro.th2.dataprovider.lw.grpc.EventLoadedStatistic
-import com.exactpro.th2.dataprovider.lw.grpc.LoadedStatistic
+import com.exactpro.th2.dataprovider.lw.grpc.MessageLoadedStatistic
 import com.exactpro.th2.processor.api.IProcessor
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -60,7 +60,7 @@ internal class TestEventController {
     @Test
     fun `put message expected value`() {
         assertFailsWith<UnsupportedOperationException>("Call unsupported expected overload") {
-            eventController.expected(LoadedStatistic.getDefaultInstance())
+            eventController.expected(MessageLoadedStatistic.getDefaultInstance())
         }
     }
 
@@ -73,10 +73,38 @@ internal class TestEventController {
     }
 
     @Test
+    fun `put unknown book expected value`() {
+        assertFailsWith<IllegalStateException>("Check statistic unknown book") {
+            eventController.expected(EventLoadedStatistic.newBuilder().apply {
+                addStatBuilder().apply {
+                    bookIdBuilder.apply { name = UNKNOWN_BOOK }
+                    scopeBuilder.apply { name = KNOWN_SCOPE }
+                }
+            }.build())
+        }
+        assertTrue(eventController.await(1, TimeUnit.NANOSECONDS), "Await empty state")
+    }
+
+    @Test
+    fun `put unknown scope expected value`() {
+        assertFailsWith<IllegalStateException>("Check statistic unknown scope") {
+            eventController.expected(EventLoadedStatistic.newBuilder().apply {
+                addStatBuilder().apply {
+                    bookIdBuilder.apply { name = KNOWN_BOOK }
+                    scopeBuilder.apply { name = UNKNOWN_SCOPE }
+                }
+            }.build())
+        }
+        assertTrue(eventController.await(1, TimeUnit.NANOSECONDS), "Await empty state")
+    }
+
+    @Test
     fun `receive unknown book`() {
-        eventController.actual(EventBatch.newBuilder().apply {
-            addEvents(event(UNKNOWN_BOOK, KNOWN_SCOPE, INTERVAL_START.plus(INTERVAL_HALF_LENGTH)))
-        }.build())
+        assertFailsWith<IllegalStateException>("Check event with unknown book") {
+            eventController.actual(EventBatch.newBuilder().apply {
+                addEvents(event(UNKNOWN_BOOK, KNOWN_SCOPE, INTERVAL_START.plus(INTERVAL_HALF_LENGTH)))
+            }.build())
+        }
 
         verify(processor, never(), listOf(
             { handle(any<RawMessage>()) },
@@ -88,9 +116,11 @@ internal class TestEventController {
 
     @Test
     fun `receive unknown group`() {
-        eventController.actual(EventBatch.newBuilder().apply {
-            addEvents(event(KNOWN_BOOK, UNKNOWN_SCOPE, INTERVAL_START.plus(INTERVAL_HALF_LENGTH)))
-        }.build())
+        assertFailsWith<IllegalStateException>("Check event with unknown group") {
+            eventController.actual(EventBatch.newBuilder().apply {
+                addEvents(event(KNOWN_BOOK, UNKNOWN_SCOPE, INTERVAL_START.plus(INTERVAL_HALF_LENGTH)))
+            }.build())
+        }
 
         verify(processor, never(), listOf(
             { handle(any<RawMessage>()) },
@@ -101,18 +131,20 @@ internal class TestEventController {
     }
 
     @Test
-    fun `receive out of time message`() {
-
-        eventController.actual(EventBatch.newBuilder().apply {
-            addEvents(event(KNOWN_BOOK, KNOWN_SCOPE, INTERVAL_START.minusNanos(1)))
-        }.build())
-
+    fun `receive out of time event`() {
+        assertFailsWith<IllegalStateException>("Check event before interval start") {
+            eventController.actual(EventBatch.newBuilder().apply {
+                addEvents(event(KNOWN_BOOK, KNOWN_SCOPE, INTERVAL_START.minusNanos(1)))
+            }.build())
+        }
         verify(processor, never().description("Event before interval start")).handle(any<Event>())
 
-        eventController.actual(EventBatch.newBuilder().apply {
-            addEvents(event(KNOWN_BOOK, KNOWN_SCOPE, INTERVAL_END))
-        }.build())
-        verify(processor, never().description("Message with end interval timestamp")).handle(any<Event>())
+        assertFailsWith<IllegalStateException>("Check event with end interval timestamp") {
+            eventController.actual(EventBatch.newBuilder().apply {
+                addEvents(event(KNOWN_BOOK, KNOWN_SCOPE, INTERVAL_END))
+            }.build())
+        }
+        verify(processor, never().description("Event with end interval timestamp")).handle(any<Event>())
 
         verify(processor, never(), listOf(
             { handle(any<RawMessage>()) },
@@ -123,7 +155,7 @@ internal class TestEventController {
     }
 
     @Test
-    fun `receive correct messages`() {
+    fun `receive correct events`() {
         val minEvent = event(KNOWN_BOOK, KNOWN_SCOPE, INTERVAL_START)
 
         eventController.actual(EventBatch.newBuilder().apply {
@@ -136,17 +168,18 @@ internal class TestEventController {
         eventController.actual(EventBatch.newBuilder().apply {
             addEvents(intermediateEvent)
         }.build())
-        verify(processor, times(1).description("Message with half interval timestamp")).handle(eq(intermediateEvent))
+        verify(processor, times(1).description("Event with half interval timestamp")).handle(eq(intermediateEvent))
 
         val maxEvent = event(KNOWN_BOOK, KNOWN_SCOPE, INTERVAL_END.minusNanos(1))
         eventController.actual(EventBatch.newBuilder().apply {
             addEvents(maxEvent)
         }.build())
-        verify(processor, times(1).description("Message the nearest to the end interval timestamp")).handle(eq(maxEvent))
+        verify(processor, times(1).description("Event the nearest to the end interval timestamp")).handle(eq(maxEvent))
 
         assertFalse(eventController.await(1, TimeUnit.NANOSECONDS), "Await not empty state")
         eventController.expected(EventLoadedStatistic.newBuilder().apply {
             addStatBuilder().apply {
+                bookIdBuilder.apply { name = KNOWN_BOOK }
                 scopeBuilder.apply { name = KNOWN_SCOPE }
                 count = 3
             }
@@ -175,6 +208,7 @@ internal class TestEventController {
             assertFalse(eventController.await(1, TimeUnit.NANOSECONDS), "Await not empty state")
             eventController.expected(EventLoadedStatistic.newBuilder().apply {
                 addStatBuilder().apply {
+                    bookIdBuilder.apply { name = KNOWN_BOOK }
                     scopeBuilder.apply { name = KNOWN_SCOPE }
                     count = 1
                 }

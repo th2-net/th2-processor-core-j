@@ -25,7 +25,7 @@ import com.exactpro.th2.common.grpc.RawMessage
 import com.exactpro.th2.common.message.plusAssign
 import com.exactpro.th2.common.utils.message.toTimestamp
 import com.exactpro.th2.dataprovider.lw.grpc.EventLoadedStatistic
-import com.exactpro.th2.dataprovider.lw.grpc.LoadedStatistic
+import com.exactpro.th2.dataprovider.lw.grpc.MessageLoadedStatistic
 import com.exactpro.th2.processor.api.IProcessor
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.assertDoesNotThrow
@@ -83,7 +83,37 @@ internal class TestGroupController {
     fun `put empty expected value`(kind: KindCase) {
         val controller = getController(kind)
         assertDoesNotThrow("Pass empty expected") {
-            controller.expected(LoadedStatistic.getDefaultInstance())
+            controller.expected(MessageLoadedStatistic.getDefaultInstance())
+        }
+        assertTrue(controller.await(1, TimeUnit.NANOSECONDS), "Await empty state")
+    }
+
+    @ParameterizedTest
+    @MethodSource("kinds")
+    fun `put unknown book expected value`(kind: KindCase) {
+        val controller = getController(kind)
+        assertFailsWith<IllegalStateException>("Check statistic unknown book") {
+            controller.expected(MessageLoadedStatistic.newBuilder().apply {
+                addStatBuilder().apply {
+                    bookIdBuilder.apply { name = UNKNOWN_BOOK }
+                    groupBuilder.apply { name = KNOWN_GROUP }
+                }
+            }.build())
+        }
+        assertTrue(controller.await(1, TimeUnit.NANOSECONDS), "Await empty state")
+    }
+
+    @ParameterizedTest
+    @MethodSource("kinds")
+    fun `put unknown group expected value`(kind: KindCase) {
+        val controller = getController(kind)
+        assertFailsWith<IllegalStateException>("Check statistic with unknown group") {
+            controller.expected(MessageLoadedStatistic.newBuilder().apply {
+                addStatBuilder().apply {
+                    bookIdBuilder.apply { name = KNOWN_BOOK }
+                    groupBuilder.apply { name = UNKNOWN_GROUP }
+                }
+            }.build())
         }
         assertTrue(controller.await(1, TimeUnit.NANOSECONDS), "Await empty state")
     }
@@ -92,11 +122,13 @@ internal class TestGroupController {
     @MethodSource("kinds")
     fun `receive unknown book`(kind: KindCase) {
         val controller = getController(kind)
-        controller.actual(MessageGroupBatch.newBuilder().apply {
-            addGroupsBuilder().apply {
-                message(kind, UNKNOWN_BOOK, KNOWN_GROUP, INTERVAL_START.plus(INTERVAL_HALF_LENGTH))
-            }
-        }.build())
+        assertFailsWith<IllegalStateException>("Check message with unknown book") {
+            controller.actual(MessageGroupBatch.newBuilder().apply {
+                addGroupsBuilder().apply {
+                    message(kind, UNKNOWN_BOOK, KNOWN_GROUP, INTERVAL_START.plus(INTERVAL_HALF_LENGTH))
+                }
+            }.build())
+        }
 
         verify(processor, never(), listOf(
             { handle(any<RawMessage>()) },
@@ -110,11 +142,13 @@ internal class TestGroupController {
     @MethodSource("kinds")
     fun `receive unknown group`(kind: KindCase) {
         val controller = getController(kind)
-        controller.actual(MessageGroupBatch.newBuilder().apply {
-            addGroupsBuilder().apply {
-                message(kind, KNOWN_BOOK, UNKNOWN_GROUP, INTERVAL_START.plus(INTERVAL_HALF_LENGTH))
-            }
-        }.build())
+        assertFailsWith<IllegalStateException>("Check message with unknown group") {
+            controller.actual(MessageGroupBatch.newBuilder().apply {
+                addGroupsBuilder().apply {
+                    message(kind, KNOWN_BOOK, UNKNOWN_GROUP, INTERVAL_START.plus(INTERVAL_HALF_LENGTH))
+                }
+            }.build())
+        }
 
         verify(processor, never(), listOf(
             { handle(any<RawMessage>()) },
@@ -133,18 +167,22 @@ internal class TestGroupController {
             KindCase.RAW_MESSAGE to { handle(any<RawMessage>()) },
         )
 
-        controller.actual(MessageGroupBatch.newBuilder().apply {
-            addGroupsBuilder().apply {
-                message(kind, KNOWN_BOOK, KNOWN_GROUP, INTERVAL_START.minusNanos(1))
-            }
-        }.build())
+        assertFailsWith<IllegalStateException>("Check message before interval start") {
+            controller.actual(MessageGroupBatch.newBuilder().apply {
+                addGroupsBuilder().apply {
+                    message(kind, KNOWN_BOOK, KNOWN_GROUP, INTERVAL_START.minusNanos(1))
+                }
+            }.build())
+        }
         verify(processor, never().description("Message before interval start"), kind, kindToCall)
 
-        controller.actual(MessageGroupBatch.newBuilder().apply {
-            addGroupsBuilder().apply {
-                message(kind, KNOWN_BOOK, KNOWN_GROUP, INTERVAL_END)
-            }
-        }.build())
+        assertFailsWith<IllegalStateException>("Check message with end interval timestamp") {
+            controller.actual(MessageGroupBatch.newBuilder().apply {
+                addGroupsBuilder().apply {
+                    message(kind, KNOWN_BOOK, KNOWN_GROUP, INTERVAL_END)
+                }
+            }.build())
+        }
         verify(processor, never().description("Message with end interval timestamp"), kind, kindToCall)
 
         verify(processor, never(), listOf(
@@ -210,8 +248,9 @@ internal class TestGroupController {
         ))
 
         assertFalse(controller.await(1, TimeUnit.NANOSECONDS), "Await not empty state")
-        controller.expected(LoadedStatistic.newBuilder().apply {
+        controller.expected(MessageLoadedStatistic.newBuilder().apply {
             addStatBuilder().apply {
+                bookIdBuilder.apply { name = KNOWN_BOOK }
                 groupBuilder.apply { name = KNOWN_GROUP }
                 count = 3
             }
@@ -246,8 +285,9 @@ internal class TestGroupController {
 
         repeat(cycles) {
             assertFalse(controller.await(1, TimeUnit.NANOSECONDS), "Await not empty state")
-            controller.expected(LoadedStatistic.newBuilder().apply {
+            controller.expected(MessageLoadedStatistic.newBuilder().apply {
                 addStatBuilder().apply {
+                    bookIdBuilder.apply { name = KNOWN_BOOK }
                     groupBuilder.apply { name = KNOWN_GROUP }
                     count = 1
                 }

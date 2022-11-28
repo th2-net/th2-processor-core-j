@@ -19,5 +19,5 @@ package com.exactpro.th2.processor.core.event.controller.state
 import com.exactpro.th2.common.grpc.Event
 
 internal interface StateUpdater {
-    fun update(event: Event)
+    fun updateState(event: Event)
 }
