@@ -49,20 +49,20 @@ import kotlin.test.assertTrue
 internal class TestGroupController {
 
     private lateinit var processor: IProcessor
-    private lateinit var messageControllerMessage: MessageController
-    private lateinit var messageControllerRawMessage: MessageController
+    private lateinit var messageController: MessageController
+    private lateinit var rawMessageController: MessageController
 
     @BeforeEach
     fun beforeEach() {
         processor = mock {  }
-        messageControllerMessage = GroupController(
+        messageController = GroupController(
             processor,
             INTERVAL_START.toTimestamp(),
             INTERVAL_END.toTimestamp(),
             KindCase.MESSAGE,
             BOOK_TO_GROUPS
         )
-        messageControllerRawMessage = GroupController(
+        rawMessageController = GroupController(
             processor,
             INTERVAL_START.toTimestamp(),
             INTERVAL_END.toTimestamp(),
@@ -263,8 +263,8 @@ internal class TestGroupController {
     }
 
     private fun getController(kind: KindCase) = when (kind) {
-        KindCase.MESSAGE -> messageControllerMessage
-        KindCase.RAW_MESSAGE -> messageControllerRawMessage
+        KindCase.MESSAGE -> messageController
+        KindCase.RAW_MESSAGE -> rawMessageController
         else -> error("Unsupported kind $kind")
     }
 
