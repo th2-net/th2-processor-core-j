@@ -16,6 +16,12 @@
 
 package com.exactpro.th2.processor.utility
 
-inline fun Boolean.ifTrue(func: () -> Unit): Boolean = this.also { if(it) func() }
+import com.google.protobuf.Timestamp
 
+inline fun Boolean.ifTrue(func: () -> Unit): Boolean = this.also { if(it) func() }
 inline fun Boolean.ifFalse(func: () -> Unit): Boolean = this.also { if(!it) func() }
+
+fun Timestamp.compare(another: Timestamp): Int {
+    val secDiff = seconds.compareTo(another.seconds)
+    return if (secDiff != 0) secDiff else nanos.compareTo(another.nanos)
+}

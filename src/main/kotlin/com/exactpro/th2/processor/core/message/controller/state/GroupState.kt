@@ -18,12 +18,12 @@ package com.exactpro.th2.processor.core.message.controller.state
 
 import com.exactpro.th2.common.grpc.AnyMessage
 import com.exactpro.th2.common.message.logId
+import com.exactpro.th2.common.utils.message.book
+import com.exactpro.th2.common.utils.message.group
+import com.exactpro.th2.common.utils.message.timestamp
 import com.exactpro.th2.dataprovider.lw.grpc.MessageLoadedStatistic
 import com.exactpro.th2.dataprovider.lw.grpc.MessageLoadedStatistic.GroupStat
-import com.exactpro.th2.processor.utility.book
 import com.exactpro.th2.processor.utility.compare
-import com.exactpro.th2.processor.utility.group
-import com.exactpro.th2.processor.utility.timestamp
 import com.google.protobuf.TextFormat.shortDebugString
 import com.google.protobuf.Timestamp
 import com.google.protobuf.util.Timestamps
@@ -99,12 +99,10 @@ internal class GroupState(
                     "expected [${Timestamps.toString(startTime)} - ${Timestamps.toString(endTime)})"
         }
 
-        val book = book
-        check(book.isNotBlank()) {
+        val book = requireNotNull(book) {
             "Group statistic has empty book name. ${shortDebugString(this)}"
         }
-        val group = group
-        check(group.isNotBlank()) {
+        val group = requireNotNull(group) {
             "Group statistic has empty group name. ${shortDebugString(this)}"
         }
 

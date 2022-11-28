@@ -19,10 +19,10 @@ package com.exactpro.th2.processor.core.event.controller.state
 import com.exactpro.th2.common.grpc.Event
 import com.exactpro.th2.dataprovider.lw.grpc.EventLoadedStatistic
 import com.exactpro.th2.dataprovider.lw.grpc.EventScope
-import com.exactpro.th2.processor.utility.book
+import com.exactpro.th2.common.utils.event.book
 import com.exactpro.th2.processor.utility.compare
-import com.exactpro.th2.processor.utility.logId
-import com.exactpro.th2.processor.utility.scope
+import com.exactpro.th2.common.utils.event.logId
+import com.exactpro.th2.common.utils.event.scope
 import com.google.protobuf.TextFormat.shortDebugString
 import com.google.protobuf.Timestamp
 import com.google.protobuf.util.Timestamps
