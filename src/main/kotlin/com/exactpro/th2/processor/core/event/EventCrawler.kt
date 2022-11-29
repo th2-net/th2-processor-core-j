@@ -17,29 +17,26 @@
 package com.exactpro.th2.processor.core.event
 
 import com.exactpro.th2.common.grpc.EventBatch
-import com.exactpro.th2.common.schema.message.MessageRouter
 import com.exactpro.th2.dataprovider.lw.grpc.EventQueueSearchRequest
 import com.exactpro.th2.dataprovider.lw.grpc.QueueDataProviderService
-import com.exactpro.th2.processor.api.IProcessor
+import com.exactpro.th2.processor.core.Context
 import com.exactpro.th2.processor.core.Crawler
-import com.exactpro.th2.processor.core.configuration.Configuration
 import com.exactpro.th2.processor.core.event.controller.EventController
 import com.google.protobuf.TextFormat.shortDebugString
 import com.google.protobuf.Timestamp
 import mu.KotlinLogging
 
 class EventCrawler(
-    eventRouter: MessageRouter<EventBatch>,
-    private val dataProvider: QueueDataProviderService,
-    configuration: Configuration,
-    processor: IProcessor
+    context: Context,
 ) : Crawler<EventBatch>(
-    eventRouter,
-    configuration,
-    processor,
+    context.eventRouter,
+    context.configuration,
+    context.processor,
 ) {
+    private val dataProvider: QueueDataProviderService = context.dataProvider
+
     private val bookToScopes = requireNotNull(
-        requireNotNull(configuration.events).bookToScopes
+        requireNotNull(context.configuration.events).bookToScopes
     ).also {
         check(it.isNotEmpty()) {
             "Incorrect configuration parameters: the `bookToScopes` option is empty"

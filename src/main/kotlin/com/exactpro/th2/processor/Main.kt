@@ -19,7 +19,6 @@ package com.exactpro.th2.processor
 import com.exactpro.th2.common.event.Event
 import com.exactpro.th2.common.grpc.EventBatch
 import com.exactpro.th2.common.grpc.EventID
-import com.exactpro.th2.common.grpc.MessageGroupBatch
 import com.exactpro.th2.common.metrics.registerLiveness
 import com.exactpro.th2.common.metrics.registerReadiness
 import com.exactpro.th2.common.schema.factory.CommonFactory
@@ -29,6 +28,7 @@ import com.exactpro.th2.common.utils.message.toTimestamp
 import com.exactpro.th2.dataprovider.lw.grpc.QueueDataProviderService
 import com.exactpro.th2.processor.api.IProcessor
 import com.exactpro.th2.processor.api.IProcessorFactory
+import com.exactpro.th2.processor.core.Context
 import com.exactpro.th2.processor.core.Crawler
 import com.exactpro.th2.processor.core.configuration.Configuration
 import com.exactpro.th2.processor.core.event.EventCrawler
@@ -62,7 +62,7 @@ fun main(args: Array<String>) {
             }
         })
 
-        ProcessorCommand(resources, args).run()
+        Box(resources, args).run()
     } catch (e: InterruptedException) {
         K_LOGGER.error(e) { "Message handling interrupted" }
     } catch (e: Throwable) {
@@ -72,7 +72,7 @@ fun main(args: Array<String>) {
     }
 }
 
-class ProcessorCommand(
+class Box(
     resources: Deque<() -> Unit>,
     args: Array<String>
 ) {
@@ -98,14 +98,24 @@ class ProcessorCommand(
     private val liveness = registerLiveness("main")
     private val readiness = registerReadiness("main")
     private val configuration = Configuration.create(commonFactory)
-    private val eventRouter: MessageRouter<EventBatch> = commonFactory.eventBatchRouter
+    private val eventRouter: MessageRouter<EventBatch> = commonFactory.eventBatchRouter.apply {
+        resources.add {
+            K_LOGGER.info { "Close event router" }
+            close()
+        }
+    }
     private val eventBatcher = EventBatcher(executor = scheduler, onBatch = eventRouter::sendAll).apply {
         resources.add {
             K_LOGGER.info { "Close event batcher" }
             close()
         }
     }
-    private val messageRouter = commonFactory.messageRouterMessageGroupBatch
+    private val messageRouter = commonFactory.messageRouterMessageGroupBatch.apply {
+        resources.add {
+            K_LOGGER.info { "Close message router" }
+            close()
+        }
+    }
     private val dataProvider = commonFactory.grpcRouter.getService(QueueDataProviderService::class.java)
 
     private val rootEventId: EventID = requireNotNull(commonFactory.rootEventId) {
@@ -144,65 +154,44 @@ class ProcessorCommand(
                     "both or neither of ${configuration.messages} `messages`, ${configuration.events} `events` options are filled. " +
                     "Processor can work in one mode only"
         }
+
+        if (configuration.messages != null && configuration.events != null) {
+            error("Incorrect configuration parameters: " +
+                    "Both of `messages`, `events` options are filled. " +
+                    "Processor can work in one mode only")
+        }
     }
 
     fun run() {
         try {
-            if (configuration.messages != null && configuration.events != null) {
-                error("Incorrect configuration parameters: " +
-                        "Both of `messages`, `events` options are filled. " +
-                        "Processor can work in one mode only")
-            }
+            val processorEventId = Event.start()
+                .name("Processor started ${Instant.now()}")
+                .type("Processor start")
+                .toBatchProto(rootEventId)
+                .also(eventRouter::sendAll)
+                .run { getEvents(0).id }
+
+            val crawlerState = recoverState()
+            val processor = createProcessor(configuration, processorEventId, crawlerState.processorState)
+            val context = Context(
+                eventBatcher,
+                processorEventId,
+                eventRouter,
+                messageRouter,
+                dataProvider,
+                configuration,
+                processor
+            )
 
             when {
-                configuration.messages != null -> processMessages()
-                configuration.events != null -> processEvents()
+                configuration.messages != null -> GroupMessageCrawler(context)
+                configuration.events != null -> EventCrawler(context)
                 else -> error("Neither of `messages`, `events` options are filled. " +
                         "Processor must work in any mode")
-            }
+            }.use(::process)
         } finally {
             readiness.disable()
         }
-    }
-
-    private fun processEvents() {
-        //TODO: extract common part
-        val processorEventId = Event.start()
-            .name("Event processor started ${Instant.now()}")
-            .type("Event processor start")
-            .toBatchProto(rootEventId)
-            .also(eventRouter::sendAll)
-            .run { getEvents(0).id }
-
-        val crawlerState = recoverState()
-        val processor = createProcessor(configuration, processorEventId, crawlerState.processorState)
-
-        createEventIntervalProcessor(
-            eventRouter,
-            dataProvider,
-            configuration,
-            processor
-        ).use(::process)
-    }
-
-    private fun processMessages() {
-        //TODO: extract common part
-        val processorEventId = Event.start()
-            .name("Message processor started ${Instant.now()}")
-            .type("Message processor start")
-            .toBatchProto(rootEventId)
-            .also(eventRouter::sendAll)
-            .run { getEvents(0).id }
-
-        val crawlerState = recoverState()
-        val processor = createProcessor(configuration, processorEventId, crawlerState.processorState)
-
-        createMessageIntervalProcessor(
-            messageRouter,
-            dataProvider,
-            configuration,
-            processor
-        ).use(::process)
     }
 
     private fun <T: Message> process(
@@ -223,20 +212,6 @@ class ProcessorCommand(
             }
         } while (true)
     }
-
-    private fun createEventIntervalProcessor(
-        eventRouter: MessageRouter<EventBatch>,
-        dataProvider: QueueDataProviderService,
-        configuration: Configuration,
-        processor: IProcessor
-    ): EventCrawler = EventCrawler(eventRouter, dataProvider, configuration, processor)
-
-    private fun createMessageIntervalProcessor (
-        messageRouter: MessageRouter<MessageGroupBatch>,
-        dataProvider: QueueDataProviderService,
-        configuration: Configuration,
-        processor: IProcessor,
-    ): Crawler<MessageGroupBatch> = GroupMessageCrawler(messageRouter, dataProvider, configuration, processor)
 
     private fun storeState(crawlerState: CrawlerState) {
         if (configuration.enableStoreState) {

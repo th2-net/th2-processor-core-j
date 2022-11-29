@@ -17,32 +17,29 @@
 package com.exactpro.th2.processor.core.message
 
 import com.exactpro.th2.common.grpc.MessageGroupBatch
-import com.exactpro.th2.common.schema.message.MessageRouter
 import com.exactpro.th2.dataprovider.lw.grpc.MessageGroupsQueueSearchRequest
 import com.exactpro.th2.dataprovider.lw.grpc.MessageGroupsQueueSearchRequest.BookGroups
 import com.exactpro.th2.dataprovider.lw.grpc.QueueDataProviderService
-import com.exactpro.th2.processor.api.IProcessor
+import com.exactpro.th2.processor.core.Context
 import com.exactpro.th2.processor.core.Crawler
-import com.exactpro.th2.processor.core.configuration.Configuration
 import com.exactpro.th2.processor.core.message.controller.GroupController
 import com.google.protobuf.TextFormat.shortDebugString
 import com.google.protobuf.Timestamp
 import mu.KotlinLogging
 
 internal class GroupMessageCrawler(
-    messageRouter: MessageRouter<MessageGroupBatch>,
-    private val dataProvider: QueueDataProviderService,
-    configuration: Configuration,
-    processor: IProcessor
+    context: Context,
 ) : Crawler<MessageGroupBatch>(
-    messageRouter,
-    configuration,
-    processor
+    context.messageRouter,
+    context.configuration,
+    context.processor
 ) {
-    private val messageKind = requireNotNull(configuration.messages).messageKind
+    private val dataProvider: QueueDataProviderService = context.dataProvider
+
+    private val messageKind = requireNotNull(context.configuration.messages).messageKind
 
     private val bookToGroups = requireNotNull(
-        requireNotNull(configuration.messages).bookToGroups
+        requireNotNull(context.configuration.messages).bookToGroups
     ).also {
         check(it.isNotEmpty()) {
             "Incorrect configuration parameters: the `bookToGroups` option is empty"
