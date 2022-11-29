@@ -120,13 +120,13 @@ class Box(
         messageRouter,
         commonFactory.grpcRouter.getService(DataProviderService::class.java),
         configuration.stateSessionAlias,
-        commonFactory.cradleManager.storage.objectsFactory.createMessageBatch().spaceLeft.toInt()
+        commonFactory.cradleConfiguration.cradleMaxMessageBatchSize
     )
     private val dataProvider = commonFactory.grpcRouter.getService(QueueDataProviderService::class.java)
 
     private val rootEventId: EventID = requireNotNull(commonFactory.rootEventId) {
         "Common's root event id can not be null"
-    }.run { EventID.newBuilder().setId(this).build() }
+    }
 
     private val from = Instant.parse(configuration.from)
     private val to = configuration.to?.run(Instant::parse)
