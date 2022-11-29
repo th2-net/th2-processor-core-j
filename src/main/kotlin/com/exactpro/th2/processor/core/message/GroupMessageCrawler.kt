@@ -16,9 +16,14 @@
 
 package com.exactpro.th2.processor.core.message
 
+import com.exactpro.th2.common.event.Event
+import com.exactpro.th2.common.event.bean.IRow
+import com.exactpro.th2.common.event.bean.Table
+import com.exactpro.th2.common.grpc.EventID
 import com.exactpro.th2.common.grpc.MessageGroupBatch
 import com.exactpro.th2.dataprovider.lw.grpc.MessageGroupsQueueSearchRequest
 import com.exactpro.th2.dataprovider.lw.grpc.MessageGroupsQueueSearchRequest.BookGroups
+import com.exactpro.th2.dataprovider.lw.grpc.MessageLoadedStatistic
 import com.exactpro.th2.dataprovider.lw.grpc.QueueDataProviderService
 import com.exactpro.th2.processor.core.Context
 import com.exactpro.th2.processor.core.Crawler
@@ -30,6 +35,8 @@ import mu.KotlinLogging
 internal class GroupMessageCrawler(
     context: Context,
 ) : Crawler<MessageGroupBatch>(
+    context.eventBatcher,
+    context.processorEventId,
     context.messageRouter,
     context.configuration,
     context.processor
@@ -54,9 +61,8 @@ internal class GroupMessageCrawler(
             }
         }.build()
     }
-
-    override fun process(from: Timestamp, to: Timestamp) {
-        controller = GroupController(processor, from, to, messageKind, bookToGroups)
+    override fun process(from: Timestamp, to: Timestamp, intervalEventId: EventID) {
+        controller = GroupController(processor, intervalEventId, from, to, messageKind, bookToGroups)
 
         val request = MessageGroupsQueueSearchRequest.newBuilder().apply {
             startTimestamp = from
@@ -69,14 +75,37 @@ internal class GroupMessageCrawler(
         K_LOGGER.info { "Request ${shortDebugString(request)}" }
         dataProvider.searchMessageGroups(request)
             .also { response ->
-                K_LOGGER.info { "Request ${shortDebugString(response)}" }
+                reportResponse(response, intervalEventId)
                 controller.expected(response)
                 check(controller.await(awaitTimeout, awaitUnit)) {
                     "Quantification failure after ($awaitTimeout:$awaitUnit waiting, controller $controller)"
                 }
             }
     }
+    override fun Event.supplement(e: Exception): Event {
+        if (e is CrawlerHandleMessageException) {
+            e.messageIds.forEach(this::messageID)
+        }
+        return this
+    }
+    private fun reportResponse(response: MessageLoadedStatistic, intervalEventId: EventID) {
+        K_LOGGER.info { "Request ${shortDebugString(response)}" }
+        eventBatcher.onEvent(
+            Event.start()
+                .name("Requested messages")
+                .type(EVENT_TYPE_REQUEST_TO_DATA_PROVIDER)
+                .bodyData(Table().apply {
+                    type = "Event statistic"
+                    fields = response.statList.map(::toRow)
+                })
+                .toProto(intervalEventId)
+                .also(eventBatcher::onEvent)
+        )
+    }
+
     companion object {
         private val K_LOGGER = KotlinLogging.logger {}
+        private data class StatisticRow(val book: String, val group: String, val count: Long): IRow
+        fun toRow(scopeStat: MessageLoadedStatistic.GroupStat): IRow = StatisticRow(scopeStat.bookId.name, scopeStat.group.name, scopeStat.count)
     }
 }

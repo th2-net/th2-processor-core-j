@@ -16,24 +16,15 @@
 
 package com.exactpro.th2.processor.core
 
-import com.exactpro.th2.common.grpc.EventID
-import com.google.protobuf.Message
-import com.google.protobuf.TextFormat.shortDebugString
-import mu.KotlinLogging
-
-class DummyController<T: Message>(
-    processorEventID: EventID
-) : Controller<T>(
-    processorEventID
-) {
-
-    override val isStateEmpty: Boolean = true
-
-    override fun actual(batch: T) {
-        K_LOGGER.debug { "Skip ${shortDebugString(batch)}" }
-    }
-
-    companion object {
-        private val K_LOGGER = KotlinLogging.logger {}
-    }
+open class CrawlerException : RuntimeException {
+    constructor() : super()
+    constructor(message: String?) : super(message)
+    constructor(message: String?, cause: Throwable?) : super(message, cause)
+    constructor(cause: Throwable?) : super(cause)
+    constructor(message: String?, cause: Throwable?, enableSuppression: Boolean, writableStackTrace: Boolean) : super(
+        message,
+        cause,
+        enableSuppression,
+        writableStackTrace
+    )
 }

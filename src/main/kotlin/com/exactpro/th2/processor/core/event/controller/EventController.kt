@@ -17,6 +17,7 @@
 package com.exactpro.th2.processor.core.event.controller
 
 import com.exactpro.th2.common.grpc.EventBatch
+import com.exactpro.th2.common.grpc.EventID
 import com.exactpro.th2.dataprovider.lw.grpc.EventLoadedStatistic
 import com.exactpro.th2.processor.api.IProcessor
 import com.exactpro.th2.processor.core.Controller
@@ -27,10 +28,13 @@ import com.google.protobuf.Timestamp
 
 internal class EventController(
     private val processor: IProcessor,
+    intervalEventId: EventID,
     startTime: Timestamp,
     endTime: Timestamp,
     bookToScopes: Map<String, Set<String>>
-) : Controller<EventBatch>() {
+) : Controller<EventBatch>(
+    intervalEventId
+) {
     private val eventState = EventState(startTime, endTime, bookToScopes)
 
     override val isStateEmpty: Boolean
@@ -43,7 +47,7 @@ internal class EventController(
 
                 // TODO: refactor looks strange
                 updateLastProcessed(event.id.startTimestamp)
-                processor.handle(event)
+                processor.handle(intervalEventId, event)
             }
         }.ifTrue(::signal)
     }

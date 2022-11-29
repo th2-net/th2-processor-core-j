@@ -16,49 +16,102 @@
 
 package com.exactpro.th2.processor.core
 
+import com.exactpro.th2.common.event.Event
+import com.exactpro.th2.common.event.Event.Status.FAILED
+import com.exactpro.th2.common.grpc.EventID
 import com.exactpro.th2.common.schema.message.ExclusiveSubscriberMonitor
 import com.exactpro.th2.common.schema.message.MessageRouter
+import com.exactpro.th2.common.utils.event.EventBatcher
 import com.exactpro.th2.processor.api.IProcessor
 import com.exactpro.th2.processor.core.configuration.Configuration
 import com.google.protobuf.Message
 import com.google.protobuf.Timestamp
+import com.google.protobuf.util.Timestamps.toString
+import mu.KotlinLogging
 
 abstract class Crawler<T : Message>(
+    protected val eventBatcher: EventBatcher,
+    processorEventID: EventID,
     messageRouter: MessageRouter<T>,
     configuration: Configuration,
     protected val processor: IProcessor
 ) : AutoCloseable {
 
     private val monitor: ExclusiveSubscriberMonitor
-    private val dummyController: Controller<T> = DummyController()
+    private val dummyController: Controller<T> = DummyController(processorEventID)
 
     protected val queue: String
     protected val awaitTimeout = configuration.awaitTimeout
 
     protected val awaitUnit = configuration.awaitUnit
+    @Volatile
     protected var controller: Controller<T> = dummyController
 
     init {
         // FIXME: if connection is be broken, subscribtion doesn't recover (exclusive queue specific)
         monitor = messageRouter.subscribeExclusive { _, batch ->
-            controller.actual(batch)
+            try {
+                controller.actual(batch)
+            } catch (e: Exception) {
+                reportHandleError(controller.intervalEventId, e)
+                throw e
+            }
         }
         queue = monitor.queue
     }
 
-    fun processInterval(from: Timestamp, to: Timestamp) {
+    fun processInterval(from: Timestamp, to: Timestamp, intervalEventId: EventID) {
         try {
-            process(from, to)
+            process(from, to, intervalEventId)
+        } catch (e: Exception) {
+            reportProcessError(intervalEventId, from, to, e)
+            throw e
         } finally {
             controller = dummyController
         }
     }
 
+    protected open fun Event.supplement(e: Exception): Event = this
+    private fun reportHandleError(intervalEventId: EventID, e: Exception) {
+        K_LOGGER.error(e) { "Handle data failure" }
+        eventBatcher.onEvent(
+            Event.start()
+                .name("Handle data failure ${e.message}")
+                .type(EVENT_TYPE_PROCESS_INTERVAL)
+                .status(FAILED)
+                .exception(e, true)
+                .supplement(e)
+                .toProto(intervalEventId)
+                .also(eventBatcher::onEvent)
+        )
+    }
+    private fun reportProcessError(intervalEventId: EventID, from: Timestamp, to: Timestamp, e: Exception) {
+        K_LOGGER.error(e) { "Process interval failure [${toString(from)} - ${toString(to)})" }
+        eventBatcher.onEvent(
+            Event.start()
+                .name("Process interval failure ${e.message}")
+                .type(EVENT_TYPE_PROCESS_INTERVAL)
+                .status(FAILED)
+                .exception(e, true)
+                .supplement(e)
+                .toProto(intervalEventId)
+                .also(eventBatcher::onEvent)
+        )
+    }
     fun serializeState(): ByteArray? = processor.serializeState()
 
     override fun close() {
         monitor.unsubscribe()
     }
 
-    protected abstract fun process(from: Timestamp, to: Timestamp)
+    protected abstract fun process(from: Timestamp, to: Timestamp, intervalEventId: EventID)
+
+    companion object {
+        private val K_LOGGER = KotlinLogging.logger {}
+
+        @JvmStatic
+        protected val EVENT_TYPE_REQUEST_TO_DATA_PROVIDER: String = "Request to data-provider"
+
+        private const val EVENT_TYPE_PROCESS_INTERVAL: String = "Process interval"
+    }
 }

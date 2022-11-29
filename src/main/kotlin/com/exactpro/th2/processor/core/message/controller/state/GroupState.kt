@@ -19,7 +19,7 @@ package com.exactpro.th2.processor.core.message.controller.state
 import com.exactpro.th2.common.grpc.AnyMessage
 import com.exactpro.th2.common.message.logId
 import com.exactpro.th2.common.utils.message.book
-import com.exactpro.th2.common.utils.message.group
+import com.exactpro.th2.common.utils.message.sessionGroup
 import com.exactpro.th2.common.utils.message.timestamp
 import com.exactpro.th2.dataprovider.lw.grpc.MessageLoadedStatistic
 import com.exactpro.th2.dataprovider.lw.grpc.MessageLoadedStatistic.GroupStat
@@ -102,7 +102,7 @@ internal class GroupState(
         val book = requireNotNull(book) {
             "Group statistic has empty book name. ${shortDebugString(this)}"
         }
-        val group = requireNotNull(group) {
+        val group = requireNotNull(sessionGroup) {
             "Group statistic has empty group name. ${shortDebugString(this)}"
         }
 

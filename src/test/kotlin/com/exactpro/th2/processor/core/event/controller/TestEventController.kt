@@ -18,6 +18,7 @@ package com.exactpro.th2.processor.core.event.controller
 
 import com.exactpro.th2.common.grpc.Event
 import com.exactpro.th2.common.grpc.EventBatch
+import com.exactpro.th2.common.grpc.EventID
 import com.exactpro.th2.common.grpc.Message
 import com.exactpro.th2.common.grpc.RawMessage
 import com.exactpro.th2.common.utils.message.toTimestamp
@@ -51,6 +52,7 @@ internal class TestEventController {
         processor = mock {  }
         eventController = EventController(
             processor,
+            INTERVAL_EVENT_ID,
             INTERVAL_START.toTimestamp(),
             INTERVAL_END.toTimestamp(),
             BOOK_TO_SCOPES
@@ -107,9 +109,9 @@ internal class TestEventController {
         }
 
         verify(processor, never(), listOf(
-            { handle(any<RawMessage>()) },
-            { handle(any<Message>()) },
-            { handle(any<Event>()) },
+            { handle(eq(INTERVAL_EVENT_ID), any<RawMessage>()) },
+            { handle(eq(INTERVAL_EVENT_ID), any<Message>()) },
+            { handle(eq(INTERVAL_EVENT_ID), any<Event>()) },
         ))
         assertTrue(eventController.await(1, TimeUnit.NANOSECONDS), "Await empty state")
     }
@@ -123,9 +125,9 @@ internal class TestEventController {
         }
 
         verify(processor, never(), listOf(
-            { handle(any<RawMessage>()) },
-            { handle(any<Message>()) },
-            { handle(any<Event>()) },
+            { handle(eq(INTERVAL_EVENT_ID), any<RawMessage>()) },
+            { handle(eq(INTERVAL_EVENT_ID), any<Message>()) },
+            { handle(eq(INTERVAL_EVENT_ID), any<Event>()) },
         ))
         assertTrue(eventController.await(1, TimeUnit.NANOSECONDS), "Await empty state")
     }
@@ -137,19 +139,19 @@ internal class TestEventController {
                 addEvents(event(KNOWN_BOOK, KNOWN_SCOPE, INTERVAL_START.minusNanos(1)))
             }.build())
         }
-        verify(processor, never().description("Event before interval start")).handle(any<Event>())
+        verify(processor, never().description("Event before interval start")).handle(eq(INTERVAL_EVENT_ID), any<Event>())
 
         assertFailsWith<IllegalStateException>("Check event with end interval timestamp") {
             eventController.actual(EventBatch.newBuilder().apply {
                 addEvents(event(KNOWN_BOOK, KNOWN_SCOPE, INTERVAL_END))
             }.build())
         }
-        verify(processor, never().description("Event with end interval timestamp")).handle(any<Event>())
+        verify(processor, never().description("Event with end interval timestamp")).handle(eq(INTERVAL_EVENT_ID), any<Event>())
 
         verify(processor, never(), listOf(
-            { handle(any<RawMessage>()) },
-            { handle(any<Message>()) },
-            { handle(any<Event>()) },
+            { handle(eq(INTERVAL_EVENT_ID), any<RawMessage>()) },
+            { handle(eq(INTERVAL_EVENT_ID), any<Message>()) },
+            { handle(eq(INTERVAL_EVENT_ID), any<Event>()) },
         ))
         assertTrue(eventController.await(1, TimeUnit.NANOSECONDS), "Await empty state")
     }
@@ -162,19 +164,28 @@ internal class TestEventController {
             addEvents(minEvent)
         }.build())
 
-        verify(processor, times(1).description("Event with start interval timestamp")).handle(eq(minEvent))
+        verify(processor, times(1).description("Event with start interval timestamp")).handle(
+            eq(INTERVAL_EVENT_ID),
+            eq(minEvent)
+        )
 
         val intermediateEvent = event(KNOWN_BOOK, KNOWN_SCOPE, INTERVAL_START.plus(INTERVAL_HALF_LENGTH))
         eventController.actual(EventBatch.newBuilder().apply {
             addEvents(intermediateEvent)
         }.build())
-        verify(processor, times(1).description("Event with half interval timestamp")).handle(eq(intermediateEvent))
+        verify(processor, times(1).description("Event with half interval timestamp")).handle(
+            eq(INTERVAL_EVENT_ID),
+            eq(intermediateEvent)
+        )
 
         val maxEvent = event(KNOWN_BOOK, KNOWN_SCOPE, INTERVAL_END.minusNanos(1))
         eventController.actual(EventBatch.newBuilder().apply {
             addEvents(maxEvent)
         }.build())
-        verify(processor, times(1).description("Event the nearest to the end interval timestamp")).handle(eq(maxEvent))
+        verify(processor, times(1).description("Event the nearest to the end interval timestamp")).handle(
+            eq(INTERVAL_EVENT_ID),
+            eq(maxEvent)
+        )
 
         assertFalse(eventController.await(1, TimeUnit.NANOSECONDS), "Await not empty state")
         eventController.expected(EventLoadedStatistic.newBuilder().apply {
@@ -186,8 +197,8 @@ internal class TestEventController {
         }.build())
 
         verify(processor, never(), listOf(
-            { handle(any<RawMessage>()) },
-            { handle(any<Message>()) },
+            { handle(eq(INTERVAL_EVENT_ID), any<RawMessage>()) },
+            { handle(eq(INTERVAL_EVENT_ID), any<Message>()) },
         ))
 
         assertTrue(eventController.await(1, TimeUnit.NANOSECONDS), "Await empty state")
@@ -202,7 +213,7 @@ internal class TestEventController {
             }.build())
         }
 
-        verify(processor, times(cycles).description("Handled events")).handle(any<Event>())
+        verify(processor, times(cycles).description("Handled events")).handle(eq(INTERVAL_EVENT_ID), any<Event>())
 
         repeat(cycles) {
             assertFalse(eventController.await(1, TimeUnit.NANOSECONDS), "Await not empty state")
@@ -216,8 +227,8 @@ internal class TestEventController {
         }
 
         verify(processor, never(), listOf(
-            { handle(any<RawMessage>()) },
-            { handle(any<Message>()) },
+            { handle(eq(INTERVAL_EVENT_ID), any<RawMessage>()) },
+            { handle(eq(INTERVAL_EVENT_ID), any<Message>()) },
         ))
         assertTrue(eventController.await(1, TimeUnit.NANOSECONDS), "Await empty state")
     }
@@ -235,6 +246,7 @@ internal class TestEventController {
         private val INTERVAL_LENGTH = INTERVAL_HALF_LENGTH + INTERVAL_HALF_LENGTH
         private val INTERVAL_START = Instant.now()
         private val INTERVAL_END = INTERVAL_START.plus(INTERVAL_LENGTH)
+        private val INTERVAL_EVENT_ID = EventID.getDefaultInstance()
 
         private const val KNOWN_BOOK = "known-book"
         private const val UNKNOWN_BOOK = "unknown-book"

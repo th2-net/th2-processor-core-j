@@ -25,17 +25,17 @@ import com.exactpro.th2.common.schema.factory.CommonFactory
 import com.exactpro.th2.common.schema.message.MessageRouter
 import com.exactpro.th2.common.utils.event.EventBatcher
 import com.exactpro.th2.common.utils.message.toTimestamp
+import com.exactpro.th2.dataprovider.lw.grpc.DataProviderService
 import com.exactpro.th2.dataprovider.lw.grpc.QueueDataProviderService
 import com.exactpro.th2.processor.api.IProcessor
 import com.exactpro.th2.processor.api.IProcessorFactory
 import com.exactpro.th2.processor.core.Context
-import com.exactpro.th2.processor.core.Crawler
 import com.exactpro.th2.processor.core.configuration.Configuration
 import com.exactpro.th2.processor.core.event.EventCrawler
 import com.exactpro.th2.processor.core.message.GroupMessageCrawler
 import com.exactpro.th2.processor.core.state.CrawlerState
+import com.exactpro.th2.processor.core.state.DataProviderStateStorage
 import com.exactpro.th2.processor.utility.load
-import com.google.protobuf.Message
 import mu.KotlinLogging
 import java.time.Duration
 import java.time.Instant
@@ -116,6 +116,12 @@ class Box(
             close()
         }
     }
+    private val stateStorage = DataProviderStateStorage(
+        messageRouter,
+        commonFactory.grpcRouter.getService(DataProviderService::class.java),
+        configuration.stateSessionAlias,
+        commonFactory.cradleManager.storage.objectsFactory.createMessageBatch().spaceLeft.toInt()
+    )
     private val dataProvider = commonFactory.grpcRouter.getService(QueueDataProviderService::class.java)
 
     private val rootEventId: EventID = requireNotNull(commonFactory.rootEventId) {
@@ -163,14 +169,14 @@ class Box(
     }
 
     fun run() {
-        try {
-            val processorEventId = Event.start()
-                .name("Processor started ${Instant.now()}")
-                .type("Processor start")
-                .toBatchProto(rootEventId)
-                .also(eventRouter::sendAll)
-                .run { getEvents(0).id }
+        val processorEventId = Event.start()
+            .name("Processor started ${Instant.now()}")
+            .type("Processor start")
+            .toBatchProto(rootEventId)
+            .also(eventRouter::sendAll)
+            .run { getEvents(0).id }
 
+        try {
             val crawlerState = recoverState()
             val processor = createProcessor(configuration, processorEventId, crawlerState.processorState)
             val context = Context(
@@ -188,32 +194,45 @@ class Box(
                 configuration.events != null -> EventCrawler(context)
                 else -> error("Neither of `messages`, `events` options are filled. " +
                         "Processor must work in any mode")
-            }.use(::process)
+            }.use { crawler ->
+                K_LOGGER.info { "Processing started" }
+                readiness.enable()
+
+                do {
+                    val intervalEventId = reportStartProcessing(processorEventId)
+                    crawler.processInterval(currentFrom.toTimestamp(), currentTo.toTimestamp(), intervalEventId)
+                    storeState(intervalEventId, CrawlerState(currentTo, crawler.serializeState()))
+                    reportEndProcessing(intervalEventId)
+
+                    currentFrom = currentTo
+                    currentTo = currentFrom.doStep()
+                    if (currentFrom == currentTo) {
+                        K_LOGGER.info { "Processing completed" }
+                        break
+                    }
+                } while (true)
+            }
+
         } finally {
             readiness.disable()
         }
     }
 
-    private fun <T: Message> process(
-        crawler: Crawler<T>
-    ) {
-        K_LOGGER.info { "Processing started" }
-        readiness.enable()
+    private fun reportStartProcessing(processorEventId: EventID) = Event.start()
+            .name("Process interval [$currentFrom - $currentTo)")
+            .type(EVENT_TYPE_PROCESS_INTERVAL)
+            .toBatchProto(processorEventId)
+            .also(eventRouter::sendAll)
+            .run { getEvents(0).id }
 
-        do {
-            crawler.processInterval(currentFrom.toTimestamp(), currentTo.toTimestamp())
-            storeState(CrawlerState(currentTo, crawler.serializeState()))
+    private fun reportEndProcessing(intervalEventId: EventID) = Event.start()
+        .name("Complete processing")
+        .type(EVENT_TYPE_PROCESS_INTERVAL)
+        .toBatchProto(intervalEventId)
+        .also(eventRouter::sendAll)
+        .run { getEvents(0).id }
 
-            currentFrom = currentTo
-            currentTo = currentFrom.doStep()
-            if (currentFrom == currentTo) {
-                K_LOGGER.info { "Processing completed" }
-                break
-            }
-        } while (true)
-    }
-
-    private fun storeState(crawlerState: CrawlerState) {
+    private fun storeState(intervalEventId: EventID, crawlerState: CrawlerState) {
         if (configuration.enableStoreState) {
             //TODO:
             K_LOGGER.warn { "Store state method isn't implemented" }
@@ -257,6 +276,8 @@ class Box(
 
     companion object {
         private val K_LOGGER = KotlinLogging.logger {}
+
+        private const val EVENT_TYPE_PROCESS_INTERVAL = "Process interval"
     }
 }
 

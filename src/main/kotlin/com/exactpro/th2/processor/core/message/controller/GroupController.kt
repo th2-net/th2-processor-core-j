@@ -17,6 +17,7 @@
 package com.exactpro.th2.processor.core.message.controller
 
 import com.exactpro.th2.common.grpc.AnyMessage
+import com.exactpro.th2.common.grpc.EventID
 import com.exactpro.th2.dataprovider.lw.grpc.MessageLoadedStatistic
 import com.exactpro.th2.processor.api.IProcessor
 import com.exactpro.th2.processor.core.message.controller.state.GroupState
@@ -26,12 +27,14 @@ import com.google.protobuf.Timestamp
 
 internal class GroupController(
     processor: IProcessor,
+    intervalEventId: EventID,
     startTime: Timestamp,
     endTime: Timestamp,
     kind: AnyMessage.KindCase,
     bookToGroups: Map<String, Set<String>>
 ) : MessageController(
     processor,
+    intervalEventId,
     kind
 ) {
     private val groupState = GroupState(startTime, endTime, kind, bookToGroups)

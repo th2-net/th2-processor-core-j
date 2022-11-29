@@ -16,6 +16,7 @@
 
 package com.exactpro.th2.processor.core
 
+import com.exactpro.th2.common.grpc.EventID
 import com.exactpro.th2.dataprovider.lw.grpc.EventLoadedStatistic
 import com.exactpro.th2.dataprovider.lw.grpc.MessageLoadedStatistic
 import com.google.protobuf.Message
@@ -26,7 +27,9 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
 
-abstract class Controller<T: Message> {
+abstract class Controller<T: Message>(
+    val intervalEventId: EventID
+) {
     /**
      * Controller updates this marker on each actual processed message which passed precondition
      */

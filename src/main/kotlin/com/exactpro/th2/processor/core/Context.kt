@@ -27,7 +27,7 @@ import com.exactpro.th2.processor.core.configuration.Configuration
 
 data class Context(
     val eventBatcher: EventBatcher,
-    val parentEventId: EventID,
+    val processorEventId: EventID,
 
     val eventRouter: MessageRouter<EventBatch>,
     val messageRouter: MessageRouter<MessageGroupBatch>,

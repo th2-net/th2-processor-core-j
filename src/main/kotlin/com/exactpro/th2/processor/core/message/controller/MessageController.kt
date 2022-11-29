@@ -19,10 +19,13 @@ package com.exactpro.th2.processor.core.message.controller
 import com.exactpro.th2.common.grpc.AnyMessage
 import com.exactpro.th2.common.grpc.AnyMessage.KindCase.MESSAGE
 import com.exactpro.th2.common.grpc.AnyMessage.KindCase.RAW_MESSAGE
+import com.exactpro.th2.common.grpc.EventID
 import com.exactpro.th2.common.grpc.MessageGroupBatch
+import com.exactpro.th2.common.utils.message.id
 import com.exactpro.th2.common.utils.message.timestamp
 import com.exactpro.th2.processor.api.IProcessor
 import com.exactpro.th2.processor.core.Controller
+import com.exactpro.th2.processor.core.message.CrawlerHandleMessageException
 import com.exactpro.th2.processor.core.message.controller.state.StateUpdater
 import com.exactpro.th2.processor.utility.ifTrue
 import javax.annotation.concurrent.ThreadSafe
@@ -30,17 +33,23 @@ import javax.annotation.concurrent.ThreadSafe
 @ThreadSafe
 internal abstract class MessageController(
     private val processor: IProcessor,
+    intervalEventId: EventID,
     protected val kind: AnyMessage.KindCase
-) : Controller<MessageGroupBatch>() {
+) : Controller<MessageGroupBatch>(
+    intervalEventId
+) {
     override fun actual(batch: MessageGroupBatch) {
         updateState {
             for (group in batch.groupsList) {
                 for (anyMessage in group.messagesList) {
-                    updateState(anyMessage)
+                    runCatching {
+                        updateState(anyMessage)
 
-                    // TODO: refactor looks strange
-                    updateLastProcessed(anyMessage.timestamp)
-                    handle(anyMessage)
+                        updateLastProcessed(anyMessage.timestamp)
+                        handle(anyMessage)
+                    }.onFailure { e ->
+                        throw CrawlerHandleMessageException(listOf(anyMessage.id), e)
+                    }
                 }
             }
         }.ifTrue(::signal)
@@ -49,8 +58,8 @@ internal abstract class MessageController(
 
     private fun handle(anyMessage: AnyMessage) {
         when (kind) {
-            MESSAGE -> processor.handle(anyMessage.message)
-            RAW_MESSAGE -> processor.handle(anyMessage.rawMessage)
+            MESSAGE -> processor.handle(intervalEventId, anyMessage.message)
+            RAW_MESSAGE -> processor.handle(intervalEventId, anyMessage.rawMessage)
             else -> error("Unsupported message kind: $kind")
         }
     }

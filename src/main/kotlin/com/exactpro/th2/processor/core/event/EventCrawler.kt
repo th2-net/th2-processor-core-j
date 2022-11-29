@@ -16,7 +16,13 @@
 
 package com.exactpro.th2.processor.core.event
 
+import com.exactpro.th2.common.event.Event
+import com.exactpro.th2.common.event.bean.IRow
+import com.exactpro.th2.common.event.bean.Table
 import com.exactpro.th2.common.grpc.EventBatch
+import com.exactpro.th2.common.grpc.EventID
+import com.exactpro.th2.dataprovider.lw.grpc.EventLoadedStatistic
+import com.exactpro.th2.dataprovider.lw.grpc.EventLoadedStatistic.ScopeStat
 import com.exactpro.th2.dataprovider.lw.grpc.EventQueueSearchRequest
 import com.exactpro.th2.dataprovider.lw.grpc.QueueDataProviderService
 import com.exactpro.th2.processor.core.Context
@@ -29,6 +35,8 @@ import mu.KotlinLogging
 class EventCrawler(
     context: Context,
 ) : Crawler<EventBatch>(
+    context.eventBatcher,
+    context.processorEventId,
     context.eventRouter,
     context.configuration,
     context.processor,
@@ -51,8 +59,8 @@ class EventCrawler(
             }
         }.build()
     }
-    override fun process(from: Timestamp, to: Timestamp) {
-        controller = EventController(processor, from, to, bookToScopes)
+    override fun process(from: Timestamp, to: Timestamp, intervalEventId: EventID) {
+        controller = EventController(processor, intervalEventId, from, to, bookToScopes)
 
         val request = EventQueueSearchRequest.newBuilder().apply {
             startTimestamp = from
@@ -65,15 +73,30 @@ class EventCrawler(
         K_LOGGER.info { "Request ${shortDebugString(request)}" }
         dataProvider.searchEvents(request)
             .also { response ->
-                K_LOGGER.info { "Request ${shortDebugString(response)}" }
+                reportResponse(response, intervalEventId)
                 controller.expected(response)
                 check(controller.await(awaitTimeout, awaitUnit)) {
                     "Quantification failure after ($awaitTimeout:$awaitUnit waiting, controller $controller)"
                 }
             }
     }
-
+    private fun reportResponse(response: EventLoadedStatistic, intervalEventId: EventID) {
+        K_LOGGER.info { "Request ${shortDebugString(response)}" }
+        eventBatcher.onEvent(
+            Event.start()
+                .name("Requested events")
+                .type(EVENT_TYPE_REQUEST_TO_DATA_PROVIDER)
+                .bodyData(Table().apply {
+                    type = "Event statistic"
+                    fields = response.statList.map(::toRow)
+                })
+                .toProto(intervalEventId)
+                .also(eventBatcher::onEvent)
+        )
+    }
     companion object {
         private val K_LOGGER = KotlinLogging.logger {}
+        private data class StatisticRow(val book: String, val scope: String, val count: Long): IRow
+        fun toRow(scopeStat: ScopeStat): IRow = StatisticRow(scopeStat.bookId.name, scopeStat.scope.name, scopeStat.count)
     }
 }
