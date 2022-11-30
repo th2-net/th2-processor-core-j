@@ -178,41 +178,43 @@ class Box(
 
         try {
             val crawlerState = recoverState()
-            val processor = createProcessor(configuration, processorEventId, crawlerState.processorState)
-            val context = Context(
-                eventBatcher,
-                processorEventId,
-                eventRouter,
-                messageRouter,
-                dataProvider,
-                configuration,
-                processor
-            )
+            createProcessor(configuration, processorEventId, crawlerState.processorState).use { processor ->
+                val context = Context(
+                    eventBatcher,
+                    processorEventId,
+                    eventRouter,
+                    messageRouter,
+                    dataProvider,
+                    configuration,
+                    processor
+                )
 
-            when {
-                configuration.messages != null -> GroupMessageCrawler(context)
-                configuration.events != null -> EventCrawler(context)
-                else -> error("Neither of `messages`, `events` options are filled. " +
-                        "Processor must work in any mode")
-            }.use { crawler ->
-                K_LOGGER.info { "Processing started" }
-                readiness.enable()
+                when {
+                    configuration.messages != null -> GroupMessageCrawler(context)
+                    configuration.events != null -> EventCrawler(context)
+                    else -> error(
+                        "Neither of `messages`, `events` options are filled. " +
+                                "Processor must work in any mode"
+                    )
+                }.use { crawler ->
+                    K_LOGGER.info { "Processing started" }
+                    readiness.enable()
 
-                do {
-                    val intervalEventId = reportStartProcessing(processorEventId)
-                    crawler.processInterval(currentFrom.toTimestamp(), currentTo.toTimestamp(), intervalEventId)
-                    storeState(intervalEventId, CrawlerState(currentTo, crawler.serializeState()))
-                    reportEndProcessing(intervalEventId)
+                    do {
+                        val intervalEventId = reportStartProcessing(processorEventId)
+                        crawler.processInterval(currentFrom.toTimestamp(), currentTo.toTimestamp(), intervalEventId)
+                        storeState(intervalEventId, CrawlerState(currentTo, crawler.serializeState()))
+                        reportEndProcessing(intervalEventId)
 
-                    currentFrom = currentTo
-                    currentTo = currentFrom.doStep()
-                    if (currentFrom == currentTo) {
-                        K_LOGGER.info { "Processing completed" }
-                        break
-                    }
-                } while (true)
+                        currentFrom = currentTo
+                        currentTo = currentFrom.doStep()
+                        if (currentFrom == currentTo) {
+                            K_LOGGER.info { "Processing completed" }
+                            break
+                        }
+                    } while (true)
+                }
             }
-
         } finally {
             readiness.disable()
         }
@@ -256,7 +258,7 @@ class Box(
             throw IllegalStateException("Failed to load processor factory", it)
         }.run {
             runCatching {
-                create(eventBatcher, processorEventId, configuration.processorSettings, state)
+                create(commonFactory, eventBatcher, processorEventId, configuration.processorSettings, state)
             }.getOrElse {
                 throw IllegalStateException("Failed to create processor instance", it)
             }

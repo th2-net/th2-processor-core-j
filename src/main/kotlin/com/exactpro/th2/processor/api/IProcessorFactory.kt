@@ -17,13 +17,14 @@
 package com.exactpro.th2.processor.api
 
 import com.exactpro.th2.common.grpc.EventID
+ import com.exactpro.th2.common.schema.factory.AbstractCommonFactory
 import com.exactpro.th2.common.utils.event.EventBatcher
 
 interface IProcessorFactory {
 
     val settingsClass: Class<out IProcessorSettings>
     fun create(
-        @Suppress("SpellCheckingInspection")
+        commonFactory: AbstractCommonFactory,
         eventBatcher: EventBatcher,
         processorEventId: EventID,
         settings: IProcessorSettings?,

@@ -24,8 +24,14 @@ import javax.annotation.concurrent.ThreadSafe
 
 @ThreadSafe
 interface IProcessor : AutoCloseable {
-    fun handle(parentEventId: EventID, message: Message)
-    fun handle(parentEventId: EventID, message: RawMessage)
-    fun handle(parentEventId: EventID, event: Event)
+    fun handle(intervalEventId: EventID, message: Message) {
+        throw UnsupportedOperationException("Processor $javaClass can't able to process ${Message::javaClass}")
+    }
+    fun handle(intervalEventId: EventID, message: RawMessage) {
+        throw UnsupportedOperationException("Processor $javaClass can't able to process ${RawMessage::javaClass}")
+    }
+    fun handle(intervalEventId: EventID, event: Event) {
+        throw UnsupportedOperationException("Processor $javaClass can't able to process ${Event::javaClass}")
+    }
     fun serializeState(): ByteArray? = null
 }
