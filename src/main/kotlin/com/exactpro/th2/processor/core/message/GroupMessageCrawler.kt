@@ -21,6 +21,7 @@ import com.exactpro.th2.common.event.bean.IRow
 import com.exactpro.th2.common.event.bean.Table
 import com.exactpro.th2.common.grpc.EventID
 import com.exactpro.th2.common.grpc.MessageGroupBatch
+import com.exactpro.th2.common.message.toJson
 import com.exactpro.th2.dataprovider.lw.grpc.MessageGroupsQueueSearchRequest
 import com.exactpro.th2.dataprovider.lw.grpc.MessageGroupsQueueSearchRequest.BookGroups
 import com.exactpro.th2.dataprovider.lw.grpc.MessageLoadedStatistic
@@ -28,7 +29,6 @@ import com.exactpro.th2.dataprovider.lw.grpc.QueueDataProviderService
 import com.exactpro.th2.processor.core.Context
 import com.exactpro.th2.processor.core.Crawler
 import com.exactpro.th2.processor.core.message.controller.GroupController
-import com.google.protobuf.TextFormat.shortDebugString
 import com.google.protobuf.Timestamp
 import mu.KotlinLogging
 
@@ -72,7 +72,7 @@ internal class GroupMessageCrawler(
             addAllMessageGroup(bookGroups)
         }.build()
 
-        K_LOGGER.info { "Request ${shortDebugString(request)}" }
+        K_LOGGER.info { "Request ${request.toJson()}" }
         dataProvider.searchMessageGroups(request)
             .also { response ->
                 reportResponse(response, intervalEventId)
@@ -89,7 +89,7 @@ internal class GroupMessageCrawler(
         return this
     }
     private fun reportResponse(response: MessageLoadedStatistic, intervalEventId: EventID) {
-        K_LOGGER.info { "Request ${shortDebugString(response)}" }
+        K_LOGGER.info { "Request ${response.toJson()}" }
         eventBatcher.onEvent(
             Event.start()
                 .name("Requested messages")

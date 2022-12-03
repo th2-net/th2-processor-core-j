@@ -18,13 +18,14 @@ package com.exactpro.th2.processor.core.message.controller.state
 
 import com.exactpro.th2.common.grpc.AnyMessage
 import com.exactpro.th2.common.message.logId
+import com.exactpro.th2.common.message.toJson
 import com.exactpro.th2.common.utils.message.book
 import com.exactpro.th2.common.utils.message.sessionGroup
 import com.exactpro.th2.common.utils.message.timestamp
 import com.exactpro.th2.dataprovider.lw.grpc.MessageLoadedStatistic
 import com.exactpro.th2.dataprovider.lw.grpc.MessageLoadedStatistic.GroupStat
-import com.exactpro.th2.processor.utility.compare
-import com.google.protobuf.TextFormat.shortDebugString
+import com.exactpro.th2.processor.core.state.StateUpdater
+import com.exactpro.th2.processor.utility.compareTo
 import com.google.protobuf.Timestamp
 import com.google.protobuf.util.Timestamps
 import mu.KotlinLogging
@@ -41,9 +42,10 @@ internal class GroupState(
     val isStateEmpty: Boolean
         get() = groupToNumber.isEmpty()
 
-    fun plus(func: StateUpdater.() -> Unit): Boolean {
+    fun plus(func: StateUpdater<AnyMessage>.() -> Unit): Boolean {
         val temporaryState = mutableMapOf<StateKey, Long>()
-        object : StateUpdater {
+        object : StateUpdater<AnyMessage> {
+            @Suppress("PARAMETER_NAME_CHANGED_ON_OVERRIDE")
             override fun updateState(anyMessage: AnyMessage) {
                 temporaryState.compute(anyMessage.toStateKey()) { _, current -> (current ?: 0L) + 1 }
             }
@@ -82,7 +84,7 @@ internal class GroupState(
             }
         }
 
-        K_LOGGER.debug { "Minus operation executed: ${shortDebugString(loadedStatistic)}, state = $groupToNumber, need check = $needCheck" }
+        K_LOGGER.debug { "Minus operation executed: ${loadedStatistic.toJson()}, state = $groupToNumber, need check = $needCheck" }
         return needCheck && isStateEmpty
     }
 
@@ -93,17 +95,17 @@ internal class GroupState(
         }
 
         val timestamp = timestamp
-        check(timestamp.compare(startTime) >= 0 && timestamp.compare(endTime) < 0) {
+        check(timestamp >= startTime && timestamp < endTime) {
             "Out of interval message ${logId}, " +
                     "actual ${Timestamps.toString(timestamp)}, " +
                     "expected [${Timestamps.toString(startTime)} - ${Timestamps.toString(endTime)})"
         }
 
         val book = requireNotNull(book) {
-            "Group statistic has empty book name. ${shortDebugString(this)}"
+            "Group statistic has empty book name. ${this.toJson()}"
         }
         val group = requireNotNull(sessionGroup) {
-            "Group statistic has empty group name. ${shortDebugString(this)}"
+            "Group statistic has empty group name. ${this.toJson()}"
         }
 
         check(bookToGroups[book]?.contains(group) ?: false) {
@@ -115,21 +117,21 @@ internal class GroupState(
 
     private fun GroupStat.toStateKey(): StateKey {
         check(hasBookId()) {
-            "Group statistic has not got information about book. ${shortDebugString(this)}"
+            "Group statistic has not got information about book. ${this.toJson()}"
         }
         check(bookId.name.isNotBlank()) {
-            "Group statistic has empty book name. ${shortDebugString(this)}"
+            "Group statistic has empty book name. ${this.toJson()}"
         }
 
         check(hasGroup()) {
-            "Group statistic has not got information about group. ${shortDebugString(this)}"
+            "Group statistic has not got information about group. ${this.toJson()}"
         }
         check(group.name.isNotBlank()) {
-            "Group statistic has empty group name. ${shortDebugString(this)}"
+            "Group statistic has empty group name. ${this.toJson()}"
         }
 
         check(bookToGroups[bookId.name]?.contains(group.name) ?: false) {
-            "Unexpected statistic for book ${bookId.name}, group ${group.name}. ${shortDebugString(this)}"
+            "Unexpected statistic for book ${bookId.name}, group ${group.name}. ${this.toJson()}"
         }
 
         return StateKey(bookId.name, group.name)

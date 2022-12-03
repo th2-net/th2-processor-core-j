@@ -29,7 +29,6 @@ import com.exactpro.th2.dataprovider.lw.grpc.EventLoadedStatistic
 import com.exactpro.th2.dataprovider.lw.grpc.MessageLoadedStatistic
 import com.exactpro.th2.processor.api.IProcessor
 import com.exactpro.th2.processor.core.message.CrawlerHandleMessageException
-import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.assertDoesNotThrow
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.Arguments
@@ -50,30 +49,23 @@ import kotlin.test.assertTrue
 
 internal class TestGroupController {
 
-    private lateinit var processor: IProcessor
-    private lateinit var messageController: MessageController
-    private lateinit var rawMessageController: MessageController
-
-    @BeforeEach
-    fun beforeEach() {
-        processor = mock {  }
-        messageController = GroupController(
-            processor,
-            INTERVAL_EVENT_ID,
-            INTERVAL_START.toTimestamp(),
-            INTERVAL_END.toTimestamp(),
-            KindCase.MESSAGE,
-            BOOK_TO_GROUPS
-        )
-        rawMessageController = GroupController(
-            processor,
-            INTERVAL_EVENT_ID,
-            INTERVAL_START.toTimestamp(),
-            INTERVAL_END.toTimestamp(),
-            KindCase.RAW_MESSAGE,
-            BOOK_TO_GROUPS
-        )
-    }
+    private val processor: IProcessor = mock {  }
+    private val messageController: MessageController = GroupController(
+        processor,
+        INTERVAL_EVENT_ID,
+        INTERVAL_START.toTimestamp(),
+        INTERVAL_END.toTimestamp(),
+        KindCase.MESSAGE,
+        BOOK_TO_GROUPS
+    )
+    private val rawMessageController: MessageController = GroupController(
+        processor,
+        INTERVAL_EVENT_ID,
+        INTERVAL_START.toTimestamp(),
+        INTERVAL_END.toTimestamp(),
+        KindCase.RAW_MESSAGE,
+        BOOK_TO_GROUPS
+    )
 
     @ParameterizedTest
     @MethodSource("kinds")

@@ -25,7 +25,6 @@ import com.exactpro.th2.common.utils.message.toTimestamp
 import com.exactpro.th2.dataprovider.lw.grpc.EventLoadedStatistic
 import com.exactpro.th2.dataprovider.lw.grpc.MessageLoadedStatistic
 import com.exactpro.th2.processor.api.IProcessor
-import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertDoesNotThrow
 import org.mockito.kotlin.any
@@ -44,20 +43,14 @@ import kotlin.test.assertTrue
 
 internal class TestEventController {
 
-    private lateinit var processor: IProcessor
-    private lateinit var eventController: EventController
-
-    @BeforeEach
-    fun beforeEach() {
-        processor = mock {  }
-        eventController = EventController(
-            processor,
-            INTERVAL_EVENT_ID,
-            INTERVAL_START.toTimestamp(),
-            INTERVAL_END.toTimestamp(),
-            BOOK_TO_SCOPES
-        )
-    }
+    private var processor: IProcessor = mock {  }
+    private var eventController: EventController = EventController(
+        processor,
+        INTERVAL_EVENT_ID,
+        INTERVAL_START.toTimestamp(),
+        INTERVAL_END.toTimestamp(),
+        BOOK_TO_SCOPES
+    )
 
     @Test
     fun `put message expected value`() {

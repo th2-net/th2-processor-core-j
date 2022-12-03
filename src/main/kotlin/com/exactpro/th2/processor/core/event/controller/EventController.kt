@@ -16,13 +16,14 @@
 
 package com.exactpro.th2.processor.core.event.controller
 
+import com.exactpro.th2.common.grpc.Event
 import com.exactpro.th2.common.grpc.EventBatch
 import com.exactpro.th2.common.grpc.EventID
 import com.exactpro.th2.dataprovider.lw.grpc.EventLoadedStatistic
 import com.exactpro.th2.processor.api.IProcessor
 import com.exactpro.th2.processor.core.Controller
 import com.exactpro.th2.processor.core.event.controller.state.EventState
-import com.exactpro.th2.processor.core.event.controller.state.StateUpdater
+import com.exactpro.th2.processor.core.state.StateUpdater
 import com.exactpro.th2.processor.utility.ifTrue
 import com.google.protobuf.Timestamp
 
@@ -56,5 +57,5 @@ internal class EventController(
         eventState.minus(loadedStatistic).ifTrue(::signal)
     }
 
-    private fun updateState(func: StateUpdater.() -> Unit): Boolean = eventState.plus(func)
+    private fun updateState(func: StateUpdater<Event>.() -> Unit): Boolean = eventState.plus(func)
 }

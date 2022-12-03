@@ -21,7 +21,7 @@ import com.exactpro.th2.common.grpc.EventID
 import com.exactpro.th2.dataprovider.lw.grpc.MessageLoadedStatistic
 import com.exactpro.th2.processor.api.IProcessor
 import com.exactpro.th2.processor.core.message.controller.state.GroupState
-import com.exactpro.th2.processor.core.message.controller.state.StateUpdater
+import com.exactpro.th2.processor.core.state.StateUpdater
 import com.exactpro.th2.processor.utility.ifTrue
 import com.google.protobuf.Timestamp
 
@@ -42,7 +42,7 @@ internal class GroupController(
     override val isStateEmpty: Boolean
         get() = groupState.isStateEmpty
 
-    override fun updateState(func: StateUpdater.() -> Unit): Boolean = groupState.plus(func)
+    override fun updateState(func: StateUpdater<AnyMessage>.() -> Unit): Boolean = groupState.plus(func)
 
     override fun expected(loadedStatistic: MessageLoadedStatistic) {
         groupState.minus(loadedStatistic).ifTrue(::signal)

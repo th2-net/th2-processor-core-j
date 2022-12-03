@@ -18,6 +18,7 @@ package com.exactpro.th2.processor.core.state
 
 import com.exactpro.th2.common.grpc.MessageGroupBatch
 import com.exactpro.th2.common.schema.message.MessageRouter
+import com.exactpro.th2.common.utils.message.id
 import com.exactpro.th2.common.utils.message.toTimestamp
 import com.exactpro.th2.dataprovider.lw.grpc.DataProviderService
 import com.exactpro.th2.dataprovider.lw.grpc.MessageSearchResponse
@@ -28,8 +29,8 @@ import com.exactpro.th2.processor.core.state.StateType.END
 import com.exactpro.th2.processor.core.state.StateType.INTERMEDIATE
 import com.exactpro.th2.processor.core.state.StateType.SINGLE
 import com.exactpro.th2.processor.core.state.StateType.START
-import com.google.protobuf.ByteString
 import com.google.protobuf.Timestamp
+import com.google.protobuf.UnsafeByteOperations
 import org.junit.jupiter.api.Assertions.assertArrayEquals
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertDoesNotThrow
@@ -285,10 +286,13 @@ internal class TestDataProviderStateStorage {
         val dataProvider: DataProviderService = mock {
             on { searchMessages(any()) }.thenAnswer {
                 cache.reversed()
-                    .map {
+                    .map { batch ->
                         MessageSearchResponse.newBuilder().apply {
                             messageBuilder.apply {
-                                rawMessage = it.getGroups(0).getMessages(0).rawMessage
+                                val rawMessage = batch.getGroups(0).getMessages(0).rawMessage
+                                messageId = rawMessage.id
+                                putAllMessageProperties(rawMessage.metadata.propertiesMap)
+                                bodyRaw = rawMessage.body
                             }
                         }.build()
                     }.iterator()
@@ -360,19 +364,15 @@ internal class TestDataProviderStateStorage {
         ): MessageSearchResponse =
             MessageSearchResponse.newBuilder().apply {
                 messageBuilder.apply {
-                    rawMessageBuilder.apply {
-                        metadataBuilder.apply {
-                            putProperties(METADATA_STATE_TYPE_PROPERTY, stateType.name)
-                            idBuilder.apply {
-                                this.timestamp = timestamp
-                                this.sequence = sequence
-                                connectionIdBuilder.apply {
-                                    sessionAlias = STATE_SESSION_ALIAS
-                                }
-                            }
+                    putMessageProperties(METADATA_STATE_TYPE_PROPERTY, stateType.name)
+                    messageIdBuilder.apply {
+                        this.timestamp = timestamp
+                        this.sequence = sequence
+                        connectionIdBuilder.apply {
+                            sessionAlias = STATE_SESSION_ALIAS
                         }
-                        body = ByteString.copyFrom(data)
                     }
+                    bodyRaw = UnsafeByteOperations.unsafeWrap(data)
                 }
             }.build()
     }

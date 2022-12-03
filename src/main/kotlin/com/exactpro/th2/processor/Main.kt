@@ -62,7 +62,14 @@ fun main(args: Array<String>) {
             }
         })
 
-        Box(resources, args).run()
+        val commonFactory = CommonFactory.createFromArguments(*args).apply {
+            resources.add {
+                K_LOGGER.info { "Closing common factory" }
+                close()
+            }
+        }
+
+        Application(resources, commonFactory).run()
     } catch (e: InterruptedException) {
         K_LOGGER.error(e) { "Message handling interrupted" }
     } catch (e: Throwable) {
@@ -72,17 +79,10 @@ fun main(args: Array<String>) {
     }
 }
 
-class Box(
+class Application(
     resources: Deque<() -> Unit>,
-    args: Array<String>
+    private val commonFactory: CommonFactory
 ) {
-    private val commonFactory = CommonFactory.createFromArguments(*args).apply {
-        resources.add {
-            K_LOGGER.info { "Closing common factory" }
-            close()
-            liveness.disable()
-        }
-    }
     private val scheduler = Executors.newScheduledThreadPool(1).apply {
         resources.add {
             K_LOGGER.info { "Shutdown scheduler" }
@@ -98,24 +98,14 @@ class Box(
     private val liveness = registerLiveness("main")
     private val readiness = registerReadiness("main")
     private val configuration = Configuration.create(commonFactory)
-    private val eventRouter: MessageRouter<EventBatch> = commonFactory.eventBatchRouter.apply {
-        resources.add {
-            K_LOGGER.info { "Close event router" }
-            close()
-        }
-    }
+    private val eventRouter: MessageRouter<EventBatch> = commonFactory.eventBatchRouter
     private val eventBatcher = EventBatcher(executor = scheduler, onBatch = eventRouter::sendAll).apply {
         resources.add {
             K_LOGGER.info { "Close event batcher" }
             close()
         }
     }
-    private val messageRouter = commonFactory.messageRouterMessageGroupBatch.apply {
-        resources.add {
-            K_LOGGER.info { "Close message router" }
-            close()
-        }
-    }
+    private val messageRouter = commonFactory.messageRouterMessageGroupBatch
     private val stateStorage = DataProviderStateStorage(
         messageRouter,
         commonFactory.grpcRouter.getService(DataProviderService::class.java),

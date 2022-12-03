@@ -26,7 +26,7 @@ import com.exactpro.th2.common.utils.message.timestamp
 import com.exactpro.th2.processor.api.IProcessor
 import com.exactpro.th2.processor.core.Controller
 import com.exactpro.th2.processor.core.message.CrawlerHandleMessageException
-import com.exactpro.th2.processor.core.message.controller.state.StateUpdater
+import com.exactpro.th2.processor.core.state.StateUpdater
 import com.exactpro.th2.processor.utility.ifTrue
 import javax.annotation.concurrent.ThreadSafe
 
@@ -54,7 +54,7 @@ internal abstract class MessageController(
             }
         }.ifTrue(::signal)
     }
-    protected abstract fun updateState(func: StateUpdater.() -> Unit): Boolean
+    protected abstract fun updateState(func: StateUpdater<AnyMessage>.() -> Unit): Boolean
 
     private fun handle(anyMessage: AnyMessage) {
         when (kind) {

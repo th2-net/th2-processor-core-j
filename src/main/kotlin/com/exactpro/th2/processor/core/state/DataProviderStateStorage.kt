@@ -15,15 +15,16 @@
  */
 package com.exactpro.th2.processor.core.state
 
-import com.exactpro.th2.common.grpc.Direction.SECOND
+import com.exactpro.th2.common.grpc.Direction
 import com.exactpro.th2.common.grpc.MessageGroupBatch
 import com.exactpro.th2.common.grpc.RawMessage
-import com.exactpro.th2.common.message.logId
 import com.exactpro.th2.common.message.plusAssign
-import com.exactpro.th2.common.message.sequence
+import com.exactpro.th2.common.message.toJson
 import com.exactpro.th2.common.message.toTimestamp
 import com.exactpro.th2.common.schema.message.MessageRouter
+import com.exactpro.th2.common.utils.message.logId
 import com.exactpro.th2.dataprovider.lw.grpc.DataProviderService
+import com.exactpro.th2.dataprovider.lw.grpc.MessageGroupResponse
 import com.exactpro.th2.dataprovider.lw.grpc.MessageSearchRequest
 import com.exactpro.th2.dataprovider.lw.grpc.TimeRelation.PREVIOUS
 import com.exactpro.th2.processor.core.state.StateType.Companion.METADATA_STATE_TYPE_PROPERTY
@@ -31,10 +32,9 @@ import com.exactpro.th2.processor.core.state.StateType.END
 import com.exactpro.th2.processor.core.state.StateType.INTERMEDIATE
 import com.exactpro.th2.processor.core.state.StateType.SINGLE
 import com.exactpro.th2.processor.core.state.StateType.START
-import com.google.protobuf.ByteString
 import com.google.protobuf.Int32Value
-import com.google.protobuf.TextFormat.shortDebugString
 import com.google.protobuf.Timestamp
+import com.google.protobuf.UnsafeByteOperations
 import com.google.protobuf.util.Timestamps
 import com.google.protobuf.util.Timestamps.toString
 import mu.KotlinLogging
@@ -46,7 +46,7 @@ class DataProviderStateStorage(
     private val messageRouter: MessageRouter<MessageGroupBatch>,
     private val dataProvider: DataProviderService,
     private val stateSessionAlias: String,
-    maxMessageSize: Int = METADATA_SIZE + MIN_STATE_SIZE
+    maxMessageSize: Long = METADATA_SIZE + MIN_STATE_SIZE
 ) : IStateStorage {
 
     init {
@@ -64,39 +64,39 @@ class DataProviderStateStorage(
         addResponseFormats(RAW_MESSAGE_RESPONSE_FORMAT)
         addStreamBuilder().apply {
             name = stateSessionAlias
-            direction = SECOND
+            direction = Direction.SECOND
         }
     }
 
     override fun loadState(): ByteArray? {
         K_LOGGER.info { "Started state loading" }
 
-        val state = mutableListOf<Pair<StateType, RawMessage>>()
-        sequence<RawMessage> {
+        val state = mutableListOf<Pair<StateType, MessageGroupResponse>>()
+        sequence {
             var iterator = dataProvider.searchMessages(createSearchRequest().also {
-                K_LOGGER.info { "Request to load state ${shortDebugString(it)}" }
+                K_LOGGER.info { "Request to load state ${it.toJson()}" }
             })
 
             while (iterator.hasNext()) {
-                val message = iterator.next().message.rawMessage
+                val message: MessageGroupResponse = iterator.next().message
                 yield(message)
                 if (!iterator.hasNext()) {
-                    iterator = dataProvider.searchMessages(createSearchRequest(message.metadata.id.timestamp).also {
-                        K_LOGGER.info { "Request to load state ${shortDebugString(it)}" }
+                    iterator = dataProvider.searchMessages(createSearchRequest(message.messageId.timestamp).also {
+                        K_LOGGER.info { "Request to load state ${it.toJson()}" }
                     })
                 }
             }
         }.map(::mapStateTypeToMessage)
         .dropWhile { (stateType, _) -> !(stateType == SINGLE || stateType == END) }
         .forEach { pair ->
-            K_LOGGER.debug { "Process raw message ${shortDebugString(pair.second)}" }
             val (stateType, message) = pair
+            K_LOGGER.debug { "Process raw message ${message.toJson()}" }
             when (stateType) {
-                SINGLE -> return message.body.toByteArray()
+                SINGLE -> return message.bodyRaw.toByteArray()
                 END, INTERMEDIATE, START -> {
                     if (state.checkAndModify(pair)) {
                         val list: List<Byte> =
-                            state.reversed().flatMap { (_, message) -> message.body.toByteArray().asSequence() }
+                            state.reversed().flatMap { (_, message) -> message.bodyRaw.toByteArray().asSequence() }
                         return ByteArray(list.size).apply { list.forEachIndexed(this::set) }
                     }
                 }
@@ -114,7 +114,7 @@ class DataProviderStateStorage(
         val stateTimestamp = Instant.now().toTimestamp()
         if (state.size > stateSize) {
             val parts = state.asSequence()
-                .chunked(stateSize)
+                .chunked(stateSize.toInt()) //FIXME: implement another approach supported long
                 .toList()
 
             parts.forEachIndexed { index, bytes ->
@@ -147,7 +147,7 @@ class DataProviderStateStorage(
 
     companion object {
         private val K_LOGGER = KotlinLogging.logger { }
-        private val PROPERTY_SIZE = METADATA_STATE_TYPE_PROPERTY.length + StateType.values().maxOf { it.name.length }
+        private val PROPERTY_SIZE: Long = (METADATA_STATE_TYPE_PROPERTY.length + StateType.values().maxOf { it.name.length }).toLong()
 
         private const val RAW_MESSAGE_RESPONSE_FORMAT = "BASE_64"
         private const val COUNT_LIMIT = 100
@@ -163,12 +163,12 @@ class DataProviderStateStorage(
         ): MessageGroupBatch = MessageGroupBatch.newBuilder().apply {
             addGroupsBuilder().apply {
                 this += RawMessage.newBuilder().apply {
-                    body = ByteString.copyFrom(this@createMessageBatch)
+                    body = UnsafeByteOperations.unsafeWrap(this@createMessageBatch)
                     metadataBuilder.apply {
                         putProperties(METADATA_STATE_TYPE_PROPERTY, stateType.name)
                         idBuilder.apply {
                             this.timestamp = stateTimestamp
-                            this.direction = SECOND
+                            this.direction = Direction.SECOND
                             this.sequence = sequence
                             connectionIdBuilder.apply {
                                 this.sessionAlias = sessionAlias
@@ -178,7 +178,7 @@ class DataProviderStateStorage(
                 }
             }
         }.build()
-        private fun MutableList<Pair<StateType, RawMessage>>.checkAndModify(pair: Pair<StateType, RawMessage>): Boolean {
+        private fun MutableList<Pair<StateType, MessageGroupResponse>>.checkAndModify(pair: Pair<StateType, MessageGroupResponse>): Boolean {
             val (statusType, message) = pair
             when(statusType) {
                 START, INTERMEDIATE -> {
@@ -186,12 +186,12 @@ class DataProviderStateStorage(
                         K_LOGGER.warn { "Reversed state can't be start from ${pair.log} message" }
                     } else {
                         val (_, lastMessage) = last()
-                        if (message.sequence + 1 != lastMessage.sequence) {
+                        if (message.messageId.sequence + 1 != lastMessage.messageId.sequence) {
                             K_LOGGER.warn { "Dropped broken by sequence state ${reversed().logState}, current message ${pair.log}" }
                             clear()
                             return false
                         }
-                        if (Timestamps.compare(message.metadata.id.timestamp, lastMessage.metadata.id.timestamp) != 0) {
+                        if (Timestamps.compare(message.messageId.timestamp, lastMessage.messageId.timestamp) != 0) {
                             K_LOGGER.warn { "Dropped broken by timestamp state ${reversed().logState}, current message ${pair.log}" }
                             clear()
                             return false
@@ -216,13 +216,13 @@ class DataProviderStateStorage(
             return false
         }
 
-        private fun mapStateTypeToMessage(message: RawMessage) =
-            StateType.parse(message.metadata.propertiesMap[METADATA_STATE_TYPE_PROPERTY]) to message
+        private fun mapStateTypeToMessage(message: MessageGroupResponse) =
+            StateType.parse(message.messagePropertiesMap[METADATA_STATE_TYPE_PROPERTY]) to message
 
-        private val List<Pair<StateType, RawMessage>>.logState: String
+        private val List<Pair<StateType, MessageGroupResponse>>.logState: String
             get() = joinToString(",", "[", "]") { pair -> pair.log }
 
-        private val Pair<StateType, RawMessage>.log: String
-            get() = "${toString(second.metadata.id.timestamp)} - ${second.logId} ($first)"
+        private val Pair<StateType, MessageGroupResponse>.log: String
+            get() = "${toString(second.messageId.timestamp)} - ${second.messageId.logId} ($first)"
     }
 }

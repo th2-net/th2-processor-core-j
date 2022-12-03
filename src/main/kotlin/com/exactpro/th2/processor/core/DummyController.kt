@@ -17,8 +17,8 @@
 package com.exactpro.th2.processor.core
 
 import com.exactpro.th2.common.grpc.EventID
+import com.exactpro.th2.common.message.toJson
 import com.google.protobuf.Message
-import com.google.protobuf.TextFormat.shortDebugString
 import mu.KotlinLogging
 
 class DummyController<T: Message>(

@@ -20,6 +20,7 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.dataformat.cbor.databind.CBORMapper
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
 import com.google.protobuf.Timestamp
+import com.google.protobuf.util.Timestamps
 
 val OBJECT_MAPPER: ObjectMapper = CBORMapper()
     .registerModule(JavaTimeModule())
@@ -27,7 +28,5 @@ val OBJECT_MAPPER: ObjectMapper = CBORMapper()
 inline fun Boolean.ifTrue(func: () -> Unit): Boolean = this.also { if(it) func() }
 inline fun Boolean.ifFalse(func: () -> Unit): Boolean = this.also { if(!it) func() }
 
-fun Timestamp.compare(another: Timestamp): Int {
-    val secDiff = seconds.compareTo(another.seconds)
-    return if (secDiff != 0) secDiff else nanos.compareTo(another.nanos)
-}
+//TODO: move to common-util
+operator fun Timestamp.compareTo(another: Timestamp): Int = Timestamps.compare(this, another)

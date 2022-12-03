@@ -14,10 +14,10 @@
  * limitations under the License.
  */
 
-package com.exactpro.th2.processor.core.message.controller.state
+package com.exactpro.th2.processor.core.state
 
-import com.exactpro.th2.common.grpc.AnyMessage
+import com.google.protobuf.Message
 
-internal interface StateUpdater {
-    fun updateState(anyMessage: AnyMessage)
+internal interface StateUpdater<T: Message> {
+    fun updateState(protoMessage: T)
 }

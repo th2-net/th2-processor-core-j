@@ -21,6 +21,7 @@ import com.exactpro.th2.common.event.bean.IRow
 import com.exactpro.th2.common.event.bean.Table
 import com.exactpro.th2.common.grpc.EventBatch
 import com.exactpro.th2.common.grpc.EventID
+import com.exactpro.th2.common.message.toJson
 import com.exactpro.th2.dataprovider.lw.grpc.EventLoadedStatistic
 import com.exactpro.th2.dataprovider.lw.grpc.EventLoadedStatistic.ScopeStat
 import com.exactpro.th2.dataprovider.lw.grpc.EventQueueSearchRequest
@@ -28,7 +29,6 @@ import com.exactpro.th2.dataprovider.lw.grpc.QueueDataProviderService
 import com.exactpro.th2.processor.core.Context
 import com.exactpro.th2.processor.core.Crawler
 import com.exactpro.th2.processor.core.event.controller.EventController
-import com.google.protobuf.TextFormat.shortDebugString
 import com.google.protobuf.Timestamp
 import mu.KotlinLogging
 
@@ -70,7 +70,7 @@ class EventCrawler(
             addAllEventScopes(bookScopes)
         }.build()
 
-        K_LOGGER.info { "Request ${shortDebugString(request)}" }
+        K_LOGGER.info { "Request ${request.toJson()}" }
         dataProvider.searchEvents(request)
             .also { response ->
                 reportResponse(response, intervalEventId)
@@ -81,7 +81,7 @@ class EventCrawler(
             }
     }
     private fun reportResponse(response: EventLoadedStatistic, intervalEventId: EventID) {
-        K_LOGGER.info { "Request ${shortDebugString(response)}" }
+        K_LOGGER.info { "Request ${response.toJson()}" }
         eventBatcher.onEvent(
             Event.start()
                 .name("Requested events")

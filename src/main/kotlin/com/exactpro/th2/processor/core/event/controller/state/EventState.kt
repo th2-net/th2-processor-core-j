@@ -17,13 +17,14 @@
 package com.exactpro.th2.processor.core.event.controller.state
 
 import com.exactpro.th2.common.grpc.Event
-import com.exactpro.th2.dataprovider.lw.grpc.EventLoadedStatistic
-import com.exactpro.th2.dataprovider.lw.grpc.EventScope
+import com.exactpro.th2.common.message.toJson
 import com.exactpro.th2.common.utils.event.book
-import com.exactpro.th2.processor.utility.compare
 import com.exactpro.th2.common.utils.event.logId
 import com.exactpro.th2.common.utils.event.scope
-import com.google.protobuf.TextFormat.shortDebugString
+import com.exactpro.th2.dataprovider.lw.grpc.EventLoadedStatistic
+import com.exactpro.th2.dataprovider.lw.grpc.EventScope
+import com.exactpro.th2.processor.core.state.StateUpdater
+import com.exactpro.th2.processor.utility.compareTo
 import com.google.protobuf.Timestamp
 import com.google.protobuf.util.Timestamps
 import mu.KotlinLogging
@@ -39,9 +40,10 @@ internal class EventState(
     val isStateEmpty: Boolean
         get() = bookAndScopeToNumber.isEmpty()
 
-    fun plus(func: StateUpdater.() -> Unit): Boolean {
+    fun plus(func: StateUpdater<Event>.() -> Unit): Boolean {
         val temporaryState = mutableMapOf<StateKey, Long>()
-        object : StateUpdater {
+        object : StateUpdater<Event> {
+            @Suppress("PARAMETER_NAME_CHANGED_ON_OVERRIDE")
             override fun updateState(event: Event) {
                 temporaryState.compute(event.toStateKey()) { _, current -> (current ?: 0L) + 1 }
             }
@@ -70,10 +72,10 @@ internal class EventState(
         eventLoadedStatistic.statList.forEach { scopeStat ->
             val scope = scopeStat.scope
             check(scope !== EventScope.getDefaultInstance()) {
-                "Scope statistic has not got information about scope. ${shortDebugString(scopeStat)}"
+                "Scope statistic has not got information about scope. ${scopeStat.toJson()}"
             }
             check(scope.name.isNotBlank()) {
-                "Scope statistic has empty Scope name. ${shortDebugString(scopeStat)}"
+                "Scope statistic has empty Scope name. ${scopeStat.toJson()}"
             }
 
             bookAndScopeToNumber.compute(scopeStat.toStateKey()) { _, previous ->
@@ -87,13 +89,13 @@ internal class EventState(
             }
         }
 
-        K_LOGGER.debug { "Minus operation executed: ${shortDebugString(eventLoadedStatistic)}, state = $bookAndScopeToNumber, need check = $needCheck" }
+        K_LOGGER.debug { "Minus operation executed: ${eventLoadedStatistic.toJson()}, state = $bookAndScopeToNumber, need check = $needCheck" }
         return needCheck && isStateEmpty
     }
 
     private fun Event.toStateKey(): StateKey {
         val timestamp = id.startTimestamp
-        check(timestamp.compare(startTime) >= 0 && timestamp.compare(endTime) < 0) {
+        check(timestamp >= startTime && timestamp < endTime) {
             "Out of interval event ${logId}, " +
                     "actual ${Timestamps.toString(timestamp)}, " +
                     "expected [${Timestamps.toString(startTime)} - ${Timestamps.toString(endTime)})"
@@ -110,21 +112,21 @@ internal class EventState(
 
     private fun EventLoadedStatistic.ScopeStat.toStateKey(): StateKey {
         check(hasBookId()) {
-            "Scope statistic has not got information about book. ${shortDebugString(this)}"
+            "Scope statistic has not got information about book. ${this.toJson()}"
         }
         check(bookId.name.isNotBlank()) {
-            "Scope statistic has empty book name. ${shortDebugString(this)}"
+            "Scope statistic has empty book name. ${this.toJson()}"
         }
 
         check(hasScope()) {
-            "Scope statistic has not got information about scope. ${shortDebugString(this)}"
+            "Scope statistic has not got information about scope. ${this.toJson()}"
         }
         check(scope.name.isNotBlank()) {
-            "Scope statistic has empty scope name. ${shortDebugString(this)}"
+            "Scope statistic has empty scope name. ${this.toJson()}"
         }
 
         check(bookToScopes[bookId.name]?.contains(scope.name) ?: false) {
-            "Unexpected statistic for book ${bookId.name}, group ${scope.name}. ${shortDebugString(this)}"
+            "Unexpected statistic for book ${bookId.name}, group ${scope.name}. ${this.toJson()}"
         }
 
         return StateKey(bookId.name, scope.name)
