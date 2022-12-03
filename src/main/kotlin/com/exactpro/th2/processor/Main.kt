@@ -256,12 +256,10 @@ class Box(
             load<IProcessorFactory>()
         }.getOrElse {
             throw IllegalStateException("Failed to load processor factory", it)
-        }.run {
-            runCatching {
-                create(commonFactory, eventBatcher, processorEventId, configuration.processorSettings, state)
-            }.getOrElse {
-                throw IllegalStateException("Failed to create processor instance", it)
-            }
+        }.runCatching {
+            create(commonFactory, eventBatcher, processorEventId, configuration.processorSettings, state)
+        }.getOrElse {
+            throw IllegalStateException("Failed to create processor instance", it)
         }
 
     private fun Instant.doStep(): Instant {

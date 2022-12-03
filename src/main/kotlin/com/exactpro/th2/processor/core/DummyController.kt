@@ -30,7 +30,7 @@ class DummyController<T: Message>(
     override val isStateEmpty: Boolean = true
 
     override fun actual(batch: T) {
-        K_LOGGER.debug { "Skip ${shortDebugString(batch)}" }
+        K_LOGGER.debug { "Skip ${batch.toJson()}" }
     }
 
     companion object {
