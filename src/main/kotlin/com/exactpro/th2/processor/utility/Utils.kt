@@ -16,7 +16,13 @@
 
 package com.exactpro.th2.processor.utility
 
+import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.dataformat.cbor.databind.CBORMapper
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
 import com.google.protobuf.Timestamp
+
+val OBJECT_MAPPER: ObjectMapper = CBORMapper()
+    .registerModule(JavaTimeModule())
 
 inline fun Boolean.ifTrue(func: () -> Unit): Boolean = this.also { if(it) func() }
 inline fun Boolean.ifFalse(func: () -> Unit): Boolean = this.also { if(!it) func() }
