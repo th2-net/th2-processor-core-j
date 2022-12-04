@@ -16,6 +16,7 @@
 
 package com.exactpro.th2.processor
 
+import com.exactpro.th2.Service
 import com.exactpro.th2.common.event.Event
 import com.exactpro.th2.common.grpc.EventBatch
 import com.exactpro.th2.common.grpc.EventID
@@ -35,7 +36,9 @@ import com.exactpro.th2.processor.core.event.EventCrawler
 import com.exactpro.th2.processor.core.message.GroupMessageCrawler
 import com.exactpro.th2.processor.core.state.CrawlerState
 import com.exactpro.th2.processor.core.state.DataProviderStateStorage
+import com.exactpro.th2.processor.utility.OBJECT_MAPPER
 import com.exactpro.th2.processor.utility.load
+import com.exactpro.th2.processor.utility.log
 import mu.KotlinLogging
 import java.time.Duration
 import java.time.Instant
@@ -69,7 +72,8 @@ fun main(args: Array<String>) {
             }
         }
 
-        Application(resources, commonFactory).run()
+        Application(commonFactory)
+            .use(Application::run)
     } catch (e: InterruptedException) {
         K_LOGGER.error(e) { "Message handling interrupted" }
     } catch (e: Throwable) {
@@ -80,34 +84,20 @@ fun main(args: Array<String>) {
 }
 
 class Application(
-    resources: Deque<() -> Unit>,
     private val commonFactory: CommonFactory
-) {
-    private val scheduler = Executors.newScheduledThreadPool(1).apply {
-        resources.add {
-            K_LOGGER.info { "Shutdown scheduler" }
-            shutdown()
-            if (!awaitTermination(1, TimeUnit.SECONDS)) {
-                K_LOGGER.warn { "Shutdown scheduler failure after 1 second" }
-                shutdownNow()
-            }
-        }
-    }
+) : Service {
+    private val scheduler = Executors.newScheduledThreadPool(1)
 
     @Suppress("SpellCheckingInspection")
     private val liveness = registerLiveness("main")
     private val readiness = registerReadiness("main")
     private val configuration = Configuration.create(commonFactory)
     private val eventRouter: MessageRouter<EventBatch> = commonFactory.eventBatchRouter
-    private val eventBatcher = EventBatcher(executor = scheduler, onBatch = eventRouter::sendAll).apply {
-        resources.add {
-            K_LOGGER.info { "Close event batcher" }
-            close()
-        }
-    }
+    private val eventBatcher = EventBatcher(executor = scheduler, onBatch = eventRouter::sendAll)
     private val messageRouter = commonFactory.messageRouterMessageGroupBatch
     private val stateStorage = DataProviderStateStorage(
         messageRouter,
+        eventBatcher,
         commonFactory.grpcRouter.getService(DataProviderService::class.java),
         configuration.stateSessionAlias,
         commonFactory.cradleConfiguration.cradleMaxMessageBatchSize
@@ -158,7 +148,7 @@ class Application(
         }
     }
 
-    fun run() {
+    override fun run() {
         val processorEventId = Event.start()
             .name("Processor started ${Instant.now()}")
             .type("Processor start")
@@ -167,8 +157,12 @@ class Application(
             .run { getEvents(0).id }
 
         try {
-            val crawlerState = recoverState()
-            createProcessor(configuration, processorEventId, crawlerState.processorState).use { processor ->
+            val crawlerState:CrawlerState? = recoverState(processorEventId)?.also { state ->
+                if (!doStepAndCheck(processorEventId, state.timestamp)) {
+                    return
+                }
+            }
+            createProcessor(processorEventId, configuration, crawlerState?.processorState).use { processor ->
                 val context = Context(
                     eventBatcher,
                     processorEventId,
@@ -196,10 +190,7 @@ class Application(
                         storeState(intervalEventId, CrawlerState(currentTo, crawler.serializeState()))
                         reportEndProcessing(intervalEventId)
 
-                        currentFrom = currentTo
-                        currentTo = currentFrom.doStep()
-                        if (currentFrom == currentTo) {
-                            K_LOGGER.info { "Processing completed" }
+                        if (!doStepAndCheck(processorEventId, currentTo)) {
                             break
                         }
                     } while (true)
@@ -210,10 +201,48 @@ class Application(
         }
     }
 
+    override fun close() {
+        runCatching {
+            K_LOGGER.info { "Close event batcher" }
+            eventBatcher.close()
+        }.onFailure { e ->
+            K_LOGGER.error(e) { "Close event batcher failure" }
+        }
+
+        kotlin.runCatching {
+            K_LOGGER.info { "Shutdown scheduler" }
+            scheduler.shutdown()
+            if (!scheduler.awaitTermination(1, TimeUnit.SECONDS)) {
+                K_LOGGER.warn { "Shutdown scheduler failure after 1 second" }
+                scheduler.shutdownNow()
+            }
+        }.onFailure { e ->
+            K_LOGGER.error(e) { "Close event batcher failure" }
+        }
+    }
+
+    private fun doStepAndCheck(processorEventId: EventID, from: Instant): Boolean {
+        currentFrom = from
+        currentTo = currentFrom.doStep()
+        if (currentFrom == currentTo) {
+            reportProcessingComplete(processorEventId)
+            return false
+        }
+        return true
+    }
+
+    private fun reportProcessingComplete(processorEventId: EventID) = Event.start()
+        .name("Whole time range is processed [${configuration.from} - ${configuration.to})")
+        .type(EVENT_TYPE_PROCESS_INTERVAL)
+        .toBatchProto(processorEventId)
+        .log(K_LOGGER)
+        .also(eventRouter::sendAll)
+
     private fun reportStartProcessing(processorEventId: EventID) = Event.start()
             .name("Process interval [$currentFrom - $currentTo)")
             .type(EVENT_TYPE_PROCESS_INTERVAL)
             .toBatchProto(processorEventId)
+            .log(K_LOGGER)
             .also(eventRouter::sendAll)
             .run { getEvents(0).id }
 
@@ -221,33 +250,44 @@ class Application(
         .name("Complete processing")
         .type(EVENT_TYPE_PROCESS_INTERVAL)
         .toBatchProto(intervalEventId)
+        .log(K_LOGGER)
         .also(eventRouter::sendAll)
         .run { getEvents(0).id }
 
-    private fun storeState(intervalEventId: EventID, crawlerState: CrawlerState) {
+    private fun storeState(processorEventId: EventID, crawlerState: CrawlerState) {
         if (configuration.enableStoreState) {
-            //TODO:
+            OBJECT_MAPPER.writeValueAsBytes(crawlerState).also { rawData ->
+                stateStorage.saveState(processorEventId, rawData)
+            }
             K_LOGGER.warn { "Store state method isn't implemented" }
         }
     }
 
-    private fun recoverState(): CrawlerState {
+    private fun recoverState(processorEventId: EventID): CrawlerState? {
         if (configuration.enableStoreState) {
-            //TODO:
-            K_LOGGER.warn { "Recover state method isn't implemented" }
+             stateStorage.loadState(processorEventId)?.let { rawData ->
+                 runCatching {
+                     OBJECT_MAPPER.readValue(rawData, CrawlerState::class.java)
+                 }.onFailure { e ->
+                     throw IllegalStateException("State can't be decode from ${
+                         rawData.joinToString("") { 
+                             it.toString(radix = 16).padStart(2, '0') 
+                         }}", e)
+                 }.getOrThrow()
+             }
         }
-        return CrawlerState(Instant.MIN, null)
+        return null
     }
     private fun createProcessor(
-        configuration: Configuration,
         processorEventId: EventID,
-        state: ByteArray?
+        configuration: Configuration,
+        processorState: ByteArray?
     ): IProcessor = runCatching {
             load<IProcessorFactory>()
         }.getOrElse {
             throw IllegalStateException("Failed to load processor factory", it)
         }.runCatching {
-            create(commonFactory, eventBatcher, processorEventId, configuration.processorSettings, state)
+            create(commonFactory, eventBatcher, processorEventId, configuration.processorSettings, processorState)
         }.getOrElse {
             throw IllegalStateException("Failed to create processor instance", it)
         }

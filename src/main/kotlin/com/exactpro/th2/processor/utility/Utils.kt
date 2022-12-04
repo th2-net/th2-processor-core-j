@@ -16,11 +16,16 @@
 
 package com.exactpro.th2.processor.utility
 
+import com.exactpro.th2.common.grpc.EventBatchOrBuilder
+import com.exactpro.th2.common.grpc.EventOrBuilder
+import com.exactpro.th2.common.grpc.EventStatus
+import com.exactpro.th2.common.utils.message.logId
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.dataformat.cbor.databind.CBORMapper
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
 import com.google.protobuf.Timestamp
 import com.google.protobuf.util.Timestamps
+import mu.KLogger
 
 val OBJECT_MAPPER: ObjectMapper = CBORMapper()
     .registerModule(JavaTimeModule())
@@ -30,3 +35,24 @@ inline fun Boolean.ifFalse(func: () -> Unit): Boolean = this.also { if(!it) func
 
 //TODO: move to common-util
 operator fun Timestamp.compareTo(another: Timestamp): Int = Timestamps.compare(this, another)
+
+fun <T : EventOrBuilder> T.log(kLogger: KLogger, asInfo: Boolean = true): T {
+    val func: () -> String = {
+        "Published event: name $name, type $type, status $status, ${
+            if (attachedMessageIdsCount == 0) { "" } else { 
+                "messages ${attachedMessageIdsList.joinToString(prefix = "[", postfix = "]") { it.logId }}, " 
+            }
+        }body ${body.toStringUtf8()}"
+    }
+    when(status) {
+        EventStatus.SUCCESS -> if (asInfo) kLogger.info(func) else kLogger.debug(func)
+        EventStatus.FAILED -> kLogger.warn(func)
+        else -> kLogger.error(func)
+    }
+    return this
+}
+
+fun <T : EventBatchOrBuilder> T.log(kLogger: KLogger, asInfo: Boolean = true): T {
+    eventsList.forEach { event -> event.log(kLogger, asInfo)}
+    return this
+}

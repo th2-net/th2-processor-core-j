@@ -16,11 +16,12 @@
 
 package com.exactpro.th2.processor.core.state
 
+import com.fasterxml.jackson.annotation.JsonProperty
 import java.time.Instant
 
 data class CrawlerState(
-    val timestamp: Instant,
-    val processorState: ByteArray?
+    @JsonProperty("timestamp") val timestamp: Instant,
+    @JsonProperty("processorState") val processorState: ByteArray?
 ) {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true

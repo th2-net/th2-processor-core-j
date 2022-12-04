@@ -15,7 +15,9 @@
  */
 package com.exactpro.th2.processor.core.state
 
+import com.exactpro.th2.common.grpc.EventID
+
 interface IStateStorage {
-    fun loadState(): ByteArray?
-    fun saveState(state: ByteArray)
+    fun loadState(parentEventId: EventID): ByteArray?
+    fun saveState(parentEventId: EventID, state: ByteArray)
 }
