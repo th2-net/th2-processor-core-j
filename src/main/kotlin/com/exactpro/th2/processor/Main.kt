@@ -30,15 +30,22 @@ import com.exactpro.th2.dataprovider.lw.grpc.DataProviderService
 import com.exactpro.th2.dataprovider.lw.grpc.QueueDataProviderService
 import com.exactpro.th2.processor.api.IProcessor
 import com.exactpro.th2.processor.api.IProcessorFactory
+import com.exactpro.th2.processor.api.ProcessorContext
 import com.exactpro.th2.processor.core.Context
 import com.exactpro.th2.processor.core.configuration.Configuration
 import com.exactpro.th2.processor.core.event.EventCrawler
 import com.exactpro.th2.processor.core.message.GroupMessageCrawler
 import com.exactpro.th2.processor.core.state.CrawlerState
 import com.exactpro.th2.processor.core.state.DataProviderStateStorage
+import com.exactpro.th2.processor.core.state.IStateStorage
 import com.exactpro.th2.processor.utility.OBJECT_MAPPER
 import com.exactpro.th2.processor.utility.load
 import com.exactpro.th2.processor.utility.log
+import com.fasterxml.jackson.databind.DeserializationFeature
+import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.dataformat.yaml.YAMLFactory
+import com.fasterxml.jackson.module.kotlin.registerKotlinModule
+import com.google.common.util.concurrent.ThreadFactoryBuilder
 import mu.KotlinLogging
 import java.time.Duration
 import java.time.Instant
@@ -86,72 +93,77 @@ fun main(args: Array<String>) {
 class Application(
     private val commonFactory: CommonFactory
 ) : Service {
-    private val scheduler = Executors.newScheduledThreadPool(1)
+    private val scheduler = Executors.newScheduledThreadPool(1,
+        ThreadFactoryBuilder().setNameFormat("processor-core-%d").build())
 
     @Suppress("SpellCheckingInspection")
     private val liveness = registerLiveness("main")
     private val readiness = registerReadiness("main")
-    private val configuration = Configuration.create(commonFactory)
     private val eventRouter: MessageRouter<EventBatch> = commonFactory.eventBatchRouter
     private val eventBatcher = EventBatcher(executor = scheduler, onBatch = eventRouter::sendAll)
     private val messageRouter = commonFactory.messageRouterMessageGroupBatch
-    private val stateStorage = DataProviderStateStorage(
-        messageRouter,
-        eventBatcher,
-        commonFactory.grpcRouter.getService(DataProviderService::class.java),
-        configuration.stateSessionAlias,
-        commonFactory.cradleConfiguration.cradleMaxMessageBatchSize
-    )
     private val dataProvider = commonFactory.grpcRouter.getService(QueueDataProviderService::class.java)
-
     private val rootEventId: EventID = requireNotNull(commonFactory.rootEventId) {
         "Common's root event id can not be null"
     }
 
-    private val from = Instant.parse(configuration.from)
-    private val to = configuration.to?.run(Instant::parse)
-    private val step = Duration.parse(configuration.intervalLength)
+    private val processorFactory: IProcessorFactory
+    private val configuration: Configuration
+    private val stateStorage: IStateStorage
 
-    private var currentFrom = from
-    private var currentTo = from.doStep()
+    private val from: Instant
+    private val to: Instant?
+    private val step: Duration
+
+    private var currentFrom: Instant
+    private var currentTo: Instant
 
     init {
         liveness.enable()
 
-        check(to == null || to >= from) {
-            "Incorrect configuration parameters: the ${configuration.to} `to` option is less than the ${configuration.from} `from`"
+        val objectMapper = ObjectMapper(YAMLFactory()).apply {
+            registerKotlinModule()
+            configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
+        }
+        processorFactory = load<IProcessorFactory>().apply {
+            registerModules(objectMapper)
         }
 
-        check(!step.isNegative && !step.isZero) {
-            "Incorrect configuration parameters: the ${configuration.intervalLength} `interval length` option is negative or zero"
-        }
-
-        check(configuration.awaitTimeout > 0) {
-            "Incorrect configuration parameters: the ${configuration.awaitTimeout} `await timeout` option isn't positive"
-        }
-
-        check(!configuration.enableStoreState || configuration.stateSessionAlias.isNotBlank()) {
-            "Incorrect configuration parameters: the ${configuration.stateSessionAlias} `state session alias` option is blank, " +
-                    "the `enable store state` is ${configuration.enableStoreState}"
-        }
-
-        check((configuration.messages != null) xor (configuration.events != null)) {
-            "Incorrect configuration parameters: " +
-                    "both or neither of ${configuration.messages} `messages`, ${configuration.events} `events` options are filled. " +
-                    "Processor can work in one mode only"
-        }
+        configuration = commonFactory
+            .getCustomConfiguration(Configuration::class.java, objectMapper)
+            .validate()
 
         if (configuration.messages != null && configuration.events != null) {
             error("Incorrect configuration parameters: " +
                     "Both of `messages`, `events` options are filled. " +
                     "Processor can work in one mode only")
         }
+
+        stateStorage = DataProviderStateStorage(
+            messageRouter,
+            eventBatcher,
+            commonFactory.grpcRouter.getService(DataProviderService::class.java),
+            configuration.stateSessionAlias,
+            commonFactory.cradleConfiguration.cradleMaxMessageBatchSize
+        )
+
+        from = Instant.parse(configuration.from)
+        to = configuration.to?.run(Instant::parse)
+        check(to == null || to >= from) {
+            "Incorrect configuration parameters: the ${configuration.to} `to` option is less than the ${configuration.from} `from`"
+        }
+
+        step = Duration.parse(configuration.intervalLength)
+        check(!step.isNegative && !step.isZero) {
+            "Incorrect configuration parameters: the ${configuration.intervalLength} `interval length` option is negative or zero"
+        }
+
+        currentFrom = from
+        currentTo = from.doStep()
     }
 
     override fun run() {
-        val processorEventId = Event.start()
-            .name("Processor started ${Instant.now()}")
-            .type("Processor start")
+        val processorEventId = processorFactory.createProcessorEvent()
             .toBatchProto(rootEventId)
             .also(eventRouter::sendAll)
             .run { getEvents(0).id }
@@ -283,11 +295,16 @@ class Application(
         configuration: Configuration,
         processorState: ByteArray?
     ): IProcessor = runCatching {
-            load<IProcessorFactory>()
-        }.getOrElse {
-            throw IllegalStateException("Failed to load processor factory", it)
-        }.runCatching {
-            create(commonFactory, eventBatcher, processorEventId, configuration.processorSettings, processorState)
+            processorFactory.create(
+                ProcessorContext(
+                    commonFactory,
+                    scheduler,
+                    eventBatcher,
+                    processorEventId,
+                    configuration.processorSettings,
+                    processorState
+                )
+            )
         }.getOrElse {
             throw IllegalStateException("Failed to create processor instance", it)
         }
@@ -308,6 +325,23 @@ class Application(
         private val K_LOGGER = KotlinLogging.logger {}
 
         private const val EVENT_TYPE_PROCESS_INTERVAL = "Process interval"
+
+        private fun Configuration.validate(): Configuration = this.apply {
+            check(awaitTimeout > 0) {
+                "Incorrect configuration parameters: the $awaitTimeout `await timeout` option isn't positive"
+            }
+
+            check(!enableStoreState || stateSessionAlias.isNotBlank()) {
+                "Incorrect configuration parameters: the $stateSessionAlias `state session alias` option is blank, " +
+                        "the `enable store state` is $enableStoreState"
+            }
+
+            check((messages != null) xor (events != null)) {
+                "Incorrect configuration parameters: " +
+                        "both or neither of $messages `messages`, $events `events` options are filled. " +
+                        "Processor can work in one mode only"
+            }
+        }
     }
 }
 

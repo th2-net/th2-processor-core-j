@@ -16,18 +16,14 @@
 
 package com.exactpro.th2.processor.api
 
-import com.exactpro.th2.common.grpc.EventID
- import com.exactpro.th2.common.schema.factory.AbstractCommonFactory
-import com.exactpro.th2.common.utils.event.EventBatcher
+import com.exactpro.th2.common.event.Event
+import com.fasterxml.jackson.databind.ObjectMapper
+import java.time.Instant
 
 interface IProcessorFactory {
-
-    val settingsClass: Class<out IProcessorSettings>
-    fun create(
-        commonFactory: AbstractCommonFactory,
-        eventBatcher: EventBatcher,
-        processorEventId: EventID,
-        settings: IProcessorSettings?,
-        state: ByteArray?
-    ): IProcessor
+    fun registerModules(objectMapper: ObjectMapper)
+    fun create(context: ProcessorContext): IProcessor
+    fun createProcessorEvent(): Event = Event.start()
+            .name("Processor started ${Instant.now()}")
+            .type("Processor start")
 }
