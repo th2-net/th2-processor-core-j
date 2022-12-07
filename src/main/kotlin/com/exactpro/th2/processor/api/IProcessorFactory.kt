@@ -21,7 +21,7 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import java.time.Instant
 
 interface IProcessorFactory {
-    fun registerModules(objectMapper: ObjectMapper)
+    fun registerModules(configureMapper: ObjectMapper)
     fun create(context: ProcessorContext): IProcessor
     fun createProcessorEvent(): Event = Event.start()
             .name("Processor started ${Instant.now()}")

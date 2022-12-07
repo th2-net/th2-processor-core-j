@@ -34,4 +34,5 @@ interface IProcessor : AutoCloseable {
         throw UnsupportedOperationException("Processor $javaClass can't able to process ${Event::javaClass}")
     }
     fun serializeState(): ByteArray? = null
+    override fun close() { }
 }
