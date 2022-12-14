@@ -44,6 +44,7 @@ repositories {
 dependencies {
     api(platform("com.exactpro.th2:bom:4.0.2"))
 
+    //FIXME: remove after relase
     implementation("com.exactpro.th2:grpc-common:4.0.0-TH2-4262-reduce-load-book-and-page-3574839736-SNAPSHOT")
     implementation("com.exactpro.th2:common:5.0.0-TH2-4262-reduce-load-book-and-page-3607143172-SNAPSHOT")
     implementation("com.exactpro.th2:common-utils:0.0.1-book-and-page-3607472196-SNAPSHOT")
