@@ -68,6 +68,7 @@ internal class GroupMessageCrawler(
             startTimestamp = from
             endTimestamp = to
             externalQueue = queue
+            syncInterval = this@GroupMessageCrawler.syncInterval
 
             addAllMessageGroup(bookGroups)
         }.build()

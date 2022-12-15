@@ -113,7 +113,7 @@ class Application(
 
     private val from: Instant
     private val to: Instant?
-    private val step: Duration
+    private val intervalLength: Duration
 
     private var currentFrom: Instant
     private var currentTo: Instant
@@ -150,12 +150,23 @@ class Application(
         from = Instant.parse(configuration.from)
         to = configuration.to?.run(Instant::parse)
         check(to == null || to >= from) {
-            "Incorrect configuration parameters: the ${configuration.to} `to` option is less than the ${configuration.from} `from`"
+            "Incorrect configuration parameters: " +
+                    "the ${configuration.to} `to` option is less than the ${configuration.from} `from`"
         }
 
-        step = Duration.parse(configuration.intervalLength)
-        check(!step.isNegative && !step.isZero) {
-            "Incorrect configuration parameters: the ${configuration.intervalLength} `interval length` option is negative or zero"
+        intervalLength = Duration.parse(configuration.intervalLength)
+        check(!intervalLength.isNegative && !intervalLength.isZero) {
+            "Incorrect configuration parameters: " +
+                    "the ${configuration.intervalLength} `interval length` option is negative or zero"
+        }
+        val syncInterval = Duration.parse(configuration.syncInterval)
+        check(!syncInterval.isNegative && !syncInterval.isZero) {
+            "Incorrect configuration parameters: " +
+                    "the ${configuration.syncInterval} `synchronize interval` option is negative or zero"
+        }
+        check(syncInterval <= intervalLength) {
+            "Incorrect configuration parameters: " +
+                    "the ${configuration.syncInterval} `synchronize interval` option is greater than the ${configuration.intervalLength} `interval length`"
         }
 
         currentFrom = from
@@ -314,7 +325,7 @@ class Application(
             return this
         }
 
-        val next = this.plus(step)
+        val next = this.plus(intervalLength)
         return when {
             to != null && to < next -> to
             else -> next

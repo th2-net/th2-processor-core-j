@@ -29,6 +29,10 @@ The processor does not work on the data after this point in time. **If it is not
 It uses the Java Duration format. You can read more about it [here](https://docs.oracle.com/javase/8/docs/api/java/time/Duration.html#parse-java.lang.CharSequence-).
 The default value is **PT10M**.
 
+**syncInterval: _PT10M_** - the processor uses this value for a request to lw-data-provider. lw-data-provider splits the whole requested interval to a synchronize intervals with specified length and publishes data for the whole requested books and scores / session aliases / group for each sync-interval.
+It uses the Java Duration format. You can read more about it [here](https://docs.oracle.com/javase/8/docs/api/java/time/Duration.html#parse-java.lang.CharSequence-).
+The default value is **PT10M**, also, the value should be less or equal as **intervalLength**.
+
 **awaitTimeout: _10_** - the value of time wait interval for responds getting via MQ. The processor waits this time after lw-data-provider respond via gRPC until getting all requested data via MQ.
 The default value is **10**.
 
@@ -74,6 +78,7 @@ spec:
     to: 2021-06-17T14:00:00.00Z
       
     intervalLength: PT10M
+    syncInterval: PT10M
     awaitTimeout: 10
     awaitUnit: SECONDS
 ```
@@ -130,6 +135,9 @@ spec:
     - name: to_data_provider
       connection-type: grpc-client
       service-class: com.exactpro.th2.dataprovider.lw.grpc.DataProviderService
+    - name: to_data_provider_stream
+      connection-type: grpc-client
+      service-class: com.exactpro.th2.dataprovider.lw.grpc.QueueDataProviderService
 ```
 
 ### Configuration example
@@ -153,6 +161,7 @@ spec:
     to: 2021-06-17T14:00:00.00Z
 
     intervalLength: PT10M
+    syncInterval: PT10M
     awaitTimeout: 10
     awaitUnit: SECONDS
     
@@ -173,4 +182,7 @@ spec:
     - name: to_data_provider
       connection-type: grpc-client
       service-class: com.exactpro.th2.dataprovider.lw.grpc.DataProviderService
+    - name: to_data_provider_stream
+      connection-type: grpc-client
+      service-class: com.exactpro.th2.dataprovider.lw.grpc.QueueDataProviderService
 ```

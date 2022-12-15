@@ -32,6 +32,7 @@ class Configuration @JvmOverloads constructor(
     val to: String?,
     val from: String,
     val intervalLength: String = "PT10M",
+    val syncInterval: String = "PT10M",
 
     val awaitTimeout: Long = 10,
     val awaitUnit: TimeUnit = TimeUnit.SECONDS,

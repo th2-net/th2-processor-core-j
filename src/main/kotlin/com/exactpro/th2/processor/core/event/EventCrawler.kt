@@ -66,6 +66,7 @@ class EventCrawler(
             startTimestamp = from
             endTimestamp = to
             externalQueue = queue
+            syncInterval = this@EventCrawler.syncInterval
 
             addAllEventScopes(bookScopes)
         }.build()
