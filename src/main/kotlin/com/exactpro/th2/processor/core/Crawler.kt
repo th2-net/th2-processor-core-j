@@ -22,14 +22,16 @@ import com.exactpro.th2.common.grpc.EventID
 import com.exactpro.th2.common.schema.message.ExclusiveSubscriberMonitor
 import com.exactpro.th2.common.schema.message.MessageRouter
 import com.exactpro.th2.common.utils.event.EventBatcher
+import com.exactpro.th2.common.utils.message.toProtoDuration
 import com.exactpro.th2.processor.api.IProcessor
 import com.exactpro.th2.processor.core.configuration.Configuration
-import com.google.protobuf.Duration
 import com.google.protobuf.Message
 import com.google.protobuf.Timestamp
-import com.google.protobuf.util.Durations
 import com.google.protobuf.util.Timestamps.toString
 import mu.KotlinLogging
+import java.time.Duration
+
+typealias ProtoDuration = com.google.protobuf.Duration
 
 abstract class Crawler<T : Message>(
     protected val eventBatcher: EventBatcher,
@@ -42,7 +44,7 @@ abstract class Crawler<T : Message>(
     private val monitor: ExclusiveSubscriberMonitor
     private val dummyController: Controller<T> = DummyController(processorEventID)
 
-    protected val syncInterval: Duration = Durations.parse(configuration.syncInterval)
+    protected val syncInterval: ProtoDuration = Duration.parse(configuration.syncInterval).toProtoDuration()
     protected val queue: String
     protected val awaitTimeout = configuration.awaitTimeout
 

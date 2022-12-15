@@ -29,7 +29,7 @@ class Configuration @JvmOverloads constructor(
     val stateSessionAlias: String = "",
     val enableStoreState: Boolean = false,
 
-    val to: String?,
+    val to: String? = null,
     val from: String,
     val intervalLength: String = "PT10M",
     val syncInterval: String = "PT10M",
