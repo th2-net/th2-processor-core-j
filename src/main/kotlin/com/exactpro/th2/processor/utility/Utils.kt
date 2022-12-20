@@ -31,7 +31,6 @@ val OBJECT_MAPPER: ObjectMapper = CBORMapper()
     .registerModule(JavaTimeModule())
 
 inline fun Boolean.ifTrue(func: () -> Unit): Boolean = this.also { if(it) func() }
-inline fun Boolean.ifFalse(func: () -> Unit): Boolean = this.also { if(!it) func() }
 
 //TODO: move to common-util
 operator fun Timestamp.compareTo(another: Timestamp): Int = Timestamps.compare(this, another)
@@ -55,4 +54,11 @@ fun <T : EventOrBuilder> T.log(kLogger: KLogger, asInfo: Boolean = true): T {
 fun <T : EventBatchOrBuilder> T.log(kLogger: KLogger, asInfo: Boolean = true): T {
     eventsList.forEach { event -> event.log(kLogger, asInfo)}
     return this
+}
+
+fun <K, V> Map<K, Set<V>>.check(key: K, value: V, message: () -> String) {
+    get(key).also { set ->
+        check(set != null && (set.isEmpty() || set.contains(value)), message)
+    }
+
 }

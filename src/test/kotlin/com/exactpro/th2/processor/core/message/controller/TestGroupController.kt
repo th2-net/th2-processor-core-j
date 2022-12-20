@@ -29,7 +29,6 @@ import com.exactpro.th2.dataprovider.lw.grpc.EventLoadedStatistic
 import com.exactpro.th2.dataprovider.lw.grpc.MessageLoadedStatistic
 import com.exactpro.th2.processor.api.IProcessor
 import com.exactpro.th2.processor.core.message.CrawlerHandleMessageException
-import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertDoesNotThrow
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.Arguments
@@ -53,34 +52,18 @@ import kotlin.test.assertTrue
 internal class TestGroupController {
 
     private val processor: IProcessor = mock {  }
-    private val messageController: MessageController = GroupController(
-        processor,
-        INTERVAL_EVENT_ID,
-        INTERVAL_START.toTimestamp(),
-        INTERVAL_END.toTimestamp(),
-        KindCase.MESSAGE,
-        BOOK_TO_GROUPS
-    )
-    private val rawMessageController: MessageController = GroupController(
-        processor,
-        INTERVAL_EVENT_ID,
-        INTERVAL_START.toTimestamp(),
-        INTERVAL_END.toTimestamp(),
-        KindCase.RAW_MESSAGE,
-        BOOK_TO_GROUPS
-    )
 
     @ParameterizedTest
-    @MethodSource("kinds")
-    fun `put event expected value`(kind: KindCase) {
+    @MethodSource("allCombinations")
+    fun `put event expected value`(bookToGroup: Map<String, Set<String>>, kind: KindCase) {
         assertFailsWith<UnsupportedOperationException>("Call unsupported expected overload") {
-            getController(kind).expected(EventLoadedStatistic.getDefaultInstance())
+            createController(bookToGroup, kind).expected(EventLoadedStatistic.getDefaultInstance())
         }
     }
     @ParameterizedTest
-    @MethodSource("kinds")
-    fun `put empty expected value`(kind: KindCase) {
-        val controller = getController(kind)
+    @MethodSource("allCombinations")
+    fun `put empty expected value`(bookToGroup: Map<String, Set<String>>, kind: KindCase) {
+        val controller = createController(bookToGroup, kind)
         assertDoesNotThrow("Pass empty expected") {
             controller.expected(MessageLoadedStatistic.getDefaultInstance())
         }
@@ -88,9 +71,9 @@ internal class TestGroupController {
     }
 
     @ParameterizedTest
-    @MethodSource("kinds")
-    fun `put unknown book expected value`(kind: KindCase) {
-        val controller = getController(kind)
+    @MethodSource("allCombinations")
+    fun `put unknown book expected value`(bookToGroup: Map<String, Set<String>>, kind: KindCase) {
+        val controller = createController(bookToGroup, kind)
         assertFailsWith<IllegalStateException>("Check statistic unknown book") {
             controller.expected(MessageLoadedStatistic.newBuilder().apply {
                 addStatBuilder().apply {
@@ -103,9 +86,9 @@ internal class TestGroupController {
     }
 
     @ParameterizedTest
-    @MethodSource("kinds")
-    fun `put unknown group expected value`(kind: KindCase) {
-        val controller = getController(kind)
+    @MethodSource("allCombinations")
+    fun `put unknown group expected value`(bookToGroup: Map<String, Set<String>>, kind: KindCase) {
+        val controller = createController(bookToGroup, kind)
         assertFailsWith<IllegalStateException>("Check statistic with unknown group") {
             controller.expected(MessageLoadedStatistic.newBuilder().apply {
                 addStatBuilder().apply {
@@ -118,9 +101,9 @@ internal class TestGroupController {
     }
 
     @ParameterizedTest
-    @MethodSource("kinds")
-    fun `receive unknown book`(kind: KindCase) {
-        val controller = getController(kind)
+    @MethodSource("allCombinations")
+    fun `receive unknown book`(bookToGroup: Map<String, Set<String>>, kind: KindCase) {
+        val controller = createController(bookToGroup, kind)
         assertFailsWith<CrawlerHandleMessageException>("Check message with unknown book") {
             controller.actual(MessageGroupBatch.newBuilder().apply {
                 addGroupsBuilder().apply {
@@ -138,9 +121,9 @@ internal class TestGroupController {
     }
 
     @ParameterizedTest
-    @MethodSource("kinds")
-    fun `receive unknown group`(kind: KindCase) {
-        val controller = getController(kind)
+    @MethodSource("bookAndGroupOnly")
+    fun `receive unknown group`(bookToGroup: Map<String, Set<String>>, kind: KindCase) {
+        val controller = createController(bookToGroup, kind)
         assertFailsWith<CrawlerHandleMessageException>("Check message with unknown group") {
             controller.actual(MessageGroupBatch.newBuilder().apply {
                 addGroupsBuilder().apply {
@@ -158,9 +141,9 @@ internal class TestGroupController {
     }
 
     @ParameterizedTest
-    @MethodSource("kinds")
-    fun `receive out of time message`(kind: KindCase) {
-        val controller = getController(kind)
+    @MethodSource("allCombinations")
+    fun `receive out of time message`(bookToGroup: Map<String, Set<String>>, kind: KindCase) {
+        val controller = createController(bookToGroup, kind)
         val kindToCall: Map<KindCase, IProcessor.() -> Unit> = mapOf(
             KindCase.MESSAGE to { handle(eq(INTERVAL_EVENT_ID), any<Message>()) },
             KindCase.RAW_MESSAGE to { handle(eq(INTERVAL_EVENT_ID), any<RawMessage>()) },
@@ -193,12 +176,12 @@ internal class TestGroupController {
     }
 
     @ParameterizedTest
-    @MethodSource("kinds")
-    fun `receive correct messages`(kind: KindCase) {
+    @MethodSource("allCombinations")
+    fun `receive correct messages`(bookToGroup: Map<String, Set<String>>, kind: KindCase) {
         val minMessage = message(KNOWN_BOOK, KNOWN_GROUP, INTERVAL_START)
         val minRawMessage = rawMessage(KNOWN_BOOK, KNOWN_GROUP, INTERVAL_START)
 
-        val controller = getController(kind)
+        val controller = createController(bookToGroup, kind)
         controller.actual(MessageGroupBatch.newBuilder().apply {
             addGroupsBuilder().apply {
                 when (kind) {
@@ -264,14 +247,16 @@ internal class TestGroupController {
         assertTrue(controller.await(1, TimeUnit.NANOSECONDS), "Await empty state")
     }
 
-    @Test
-    fun `new controller`() {
-        assertFalse(messageController.await(1, TimeUnit.NANOSECONDS), "Await empty state")
-        assertFalse(rawMessageController.await(1, TimeUnit.NANOSECONDS), "Await empty state")
+    @ParameterizedTest
+    @MethodSource("allCombinations")
+    fun `new controller`(bookToGroup: Map<String, Set<String>>, kind: KindCase) {
+        assertFalse(createController(bookToGroup, kind).await(1, TimeUnit.NANOSECONDS), "Await empty state")
     }
 
-    @Test
-    fun `receive several messages after pipeline`() {
+    @ParameterizedTest
+    @MethodSource("parsedOnly")
+    fun `receive several messages after pipeline`(bookToGroup: Map<String, Set<String>>, kind: KindCase) {
+        val controller = createController(bookToGroup, kind)
         val builder = message(KNOWN_BOOK, KNOWN_GROUP, INTERVAL_START).toBuilder()
         val first = builder.apply {
             metadataBuilder.apply {
@@ -290,7 +275,7 @@ internal class TestGroupController {
             }
         }.build()
 
-        messageController.actual(MessageGroupBatch.newBuilder().apply {
+        controller.actual(MessageGroupBatch.newBuilder().apply {
             addGroupsBuilder().apply {
                 this += first
                 this += second
@@ -302,8 +287,8 @@ internal class TestGroupController {
         verify(processor, never().description("Raw messages with start interval timestamp")).handle(eq(INTERVAL_EVENT_ID), any<RawMessage>())
         verify(processor, never().description("Events with start interval timestamp")).handle(eq(INTERVAL_EVENT_ID), any<Event>())
 
-        assertFalse(messageController.await(1, TimeUnit.NANOSECONDS), "Await not empty state")
-        messageController.expected(MessageLoadedStatistic.newBuilder().apply {
+        assertFalse(controller.await(1, TimeUnit.NANOSECONDS), "Await not empty state")
+        controller.expected(MessageLoadedStatistic.newBuilder().apply {
             addStatBuilder().apply {
                 bookIdBuilder.apply { name = KNOWN_BOOK }
                 groupBuilder.apply { name = KNOWN_GROUP }
@@ -315,13 +300,13 @@ internal class TestGroupController {
         verify(processor, never().description("Final raw message handler verification")).handle(any(), any<RawMessage>())
         verify(processor, never().description("Final event handler verification")).handle(any(), any<Event>())
 
-        assertTrue(messageController.await(1, TimeUnit.NANOSECONDS), "Await empty state")
+        assertTrue(controller.await(1, TimeUnit.NANOSECONDS), "Await empty state")
     }
 
     @ParameterizedTest
-    @MethodSource("kinds")
-    fun `multiple expected method calls`(kind: KindCase) {
-        val controller = getController(kind)
+    @MethodSource("allCombinations")
+    fun `multiple expected method calls`(bookToGroup: Map<String, Set<String>>, kind: KindCase) {
+        val controller = createController(bookToGroup, kind)
         val cycles = 2
         repeat(cycles) {
             controller.actual(MessageGroupBatch.newBuilder().apply {
@@ -355,11 +340,13 @@ internal class TestGroupController {
         assertTrue(controller.await(1, TimeUnit.NANOSECONDS), "Await empty state")
     }
 
-    private fun getController(kind: KindCase) = when (kind) {
-        KindCase.MESSAGE -> messageController
-        KindCase.RAW_MESSAGE -> rawMessageController
-        else -> error("Unsupported kind $kind")
-    }
+    private fun createController(bookToGroup: Map<String, Set<String>>, kind: KindCase) = GroupController(
+        processor,
+        INTERVAL_EVENT_ID,
+        INTERVAL_START.toTimestamp(),
+        INTERVAL_END.toTimestamp(),
+        kind,
+        bookToGroup)
 
     private fun MessageGroup.Builder.message(kind: KindCase, book: String, group: String, timestamp: Instant) {
         when (kind) {
@@ -410,6 +397,7 @@ internal class TestGroupController {
         private const val KNOWN_GROUP = "known-group"
         private const val UNKNOWN_GROUP = "unknown-group"
         private val BOOK_TO_GROUPS = mapOf(KNOWN_BOOK to setOf(KNOWN_GROUP))
+        private val BOOK_ONLY = mapOf(KNOWN_BOOK to emptySet<String>())
 
         fun <T> verify(mock: T, mode: VerificationMode, kind: KindCase, calls: Map<KindCase, T.() -> Any>) {
             val call = requireNotNull(calls[kind])
@@ -421,9 +409,23 @@ internal class TestGroupController {
             }
         }
         @JvmStatic
-        fun kinds() = listOf(
-            Arguments.of(KindCase.MESSAGE),
-            Arguments.of(KindCase.RAW_MESSAGE)
+        fun allCombinations() = listOf(
+            Arguments.of(BOOK_ONLY, KindCase.MESSAGE),
+            Arguments.of(BOOK_ONLY, KindCase.RAW_MESSAGE),
+            Arguments.of(BOOK_TO_GROUPS, KindCase.MESSAGE),
+            Arguments.of(BOOK_TO_GROUPS, KindCase.RAW_MESSAGE),
+        )
+
+        @JvmStatic
+        fun parsedOnly() = listOf(
+            Arguments.of(BOOK_ONLY, KindCase.MESSAGE),
+            Arguments.of(BOOK_TO_GROUPS, KindCase.MESSAGE),
+        )
+
+        @JvmStatic
+        fun bookAndGroupOnly() = listOf(
+            Arguments.of(BOOK_TO_GROUPS, KindCase.MESSAGE),
+            Arguments.of(BOOK_TO_GROUPS, KindCase.RAW_MESSAGE),
         )
     }
 }

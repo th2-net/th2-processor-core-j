@@ -47,11 +47,11 @@ Processor can work of in one of two type of data: events, messages. The current 
 **messageKind: _MESSAGE_** - the type of messages will be requested from lw-data-provider. The option supports the next values: MESSAGE, RAW_MESSAGE
 The default value is **MESSAGE**.
 
-**bookToGroups** - the combination of each **book** and **group** will be requested from lw-data-provider. This map must not be empty, also, each **group** collection must not be empty too. The mode where only book names are required will be supported in the future. **Required parameter** 
+**bookToGroups** - the combination of each **book** and **group** will be requested from lw-data-provider. This map must not be empty, also, each **group** collection can be empty or filled via not blank values. **Required parameter** 
 
 **events** - processor will work on events when this option is filled
 
-**bookToScopes** - the combination of each **book** and **scopes** will be requested from lw-data-provider. This map must not be empty, also, each **scope** collection must not be empty too. The mode where only book names are required will be supported in the future. **Required parameter**
+**bookToScopes** - the combination of each **book** and **scopes** will be requested from lw-data-provider. This map must not be empty, also, each **scope** collection can be empty or filled via not blank values. **Required parameter**
 
 For example:
 

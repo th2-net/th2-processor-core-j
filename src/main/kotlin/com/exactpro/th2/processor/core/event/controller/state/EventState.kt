@@ -24,6 +24,7 @@ import com.exactpro.th2.common.utils.event.scope
 import com.exactpro.th2.dataprovider.lw.grpc.EventLoadedStatistic
 import com.exactpro.th2.dataprovider.lw.grpc.EventScope
 import com.exactpro.th2.processor.core.state.StateUpdater
+import com.exactpro.th2.processor.utility.check
 import com.exactpro.th2.processor.utility.compareTo
 import com.google.protobuf.Timestamp
 import com.google.protobuf.util.Timestamps
@@ -103,8 +104,8 @@ internal class EventState(
 
         val book = this.book.also { check(book.isNotBlank()) { "Event $logId hasn't got book" } }
         val scope = this.scope.also { check(scope.isNotBlank()) { "Event $logId hasn't got scope" } }
-        check(bookToScopes[book]?.contains(this.scope) ?: false) {
-            "unexpected event ${logId}, book ${book}, scope $scope"
+        bookToScopes.check(book, scope) {
+            "Unexpected event ${logId}, book ${book}, scope $scope"
         }
 
         return StateKey(book, scope)
@@ -125,7 +126,7 @@ internal class EventState(
             "Scope statistic has empty scope name. ${this.toJson()}"
         }
 
-        check(bookToScopes[bookId.name]?.contains(scope.name) ?: false) {
+        bookToScopes.check(bookId.name, scope.name) {
             "Unexpected statistic for book ${bookId.name}, group ${scope.name}. ${this.toJson()}"
         }
 

@@ -27,6 +27,9 @@ import com.exactpro.th2.dataprovider.lw.grpc.MessageLoadedStatistic
 import com.exactpro.th2.processor.api.IProcessor
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertDoesNotThrow
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.Arguments
+import org.junit.jupiter.params.provider.MethodSource
 import org.mockito.kotlin.any
 import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
@@ -44,31 +47,30 @@ import kotlin.test.assertTrue
 internal class TestEventController {
 
     private var processor: IProcessor = mock {  }
-    private var eventController: EventController = EventController(
-        processor,
-        INTERVAL_EVENT_ID,
-        INTERVAL_START.toTimestamp(),
-        INTERVAL_END.toTimestamp(),
-        BOOK_TO_SCOPES
-    )
 
-    @Test
-    fun `put message expected value`() {
+    @ParameterizedTest
+    @MethodSource("allCombinations")
+    fun `put message expected value`(bookToScope: Map<String, Set<String>>) {
+        val eventController = createController(bookToScope)
         assertFailsWith<UnsupportedOperationException>("Call unsupported expected overload") {
             eventController.expected(MessageLoadedStatistic.getDefaultInstance())
         }
     }
 
-    @Test
-    fun `put empty expected value`() {
+    @ParameterizedTest
+    @MethodSource("allCombinations")
+    fun `put empty expected value`(bookToScope: Map<String, Set<String>>) {
+        val eventController = createController(bookToScope)
         assertDoesNotThrow("Pass empty expected") {
             eventController.expected(EventLoadedStatistic.getDefaultInstance())
         }
         assertFalse(eventController.await(1, TimeUnit.NANOSECONDS), "Await uncompleted state")
     }
 
-    @Test
-    fun `put unknown book expected value`() {
+    @ParameterizedTest
+    @MethodSource("allCombinations")
+    fun `put unknown book expected value`(bookToScope: Map<String, Set<String>>) {
+        val eventController = createController(bookToScope)
         assertFailsWith<IllegalStateException>("Check statistic unknown book") {
             eventController.expected(EventLoadedStatistic.newBuilder().apply {
                 addStatBuilder().apply {
@@ -82,6 +84,7 @@ internal class TestEventController {
 
     @Test
     fun `put unknown scope expected value`() {
+        val eventController = createController(BOOK_TO_SCOPES)
         assertFailsWith<IllegalStateException>("Check statistic unknown scope") {
             eventController.expected(EventLoadedStatistic.newBuilder().apply {
                 addStatBuilder().apply {
@@ -93,8 +96,10 @@ internal class TestEventController {
         assertFalse(eventController.await(1, TimeUnit.NANOSECONDS), "Await uncompleted state")
     }
 
-    @Test
-    fun `receive unknown book`() {
+    @ParameterizedTest
+    @MethodSource("allCombinations")
+    fun `receive unknown book`(bookToScope: Map<String, Set<String>>) {
+        val eventController = createController(bookToScope)
         assertFailsWith<IllegalStateException>("Check event with unknown book") {
             eventController.actual(EventBatch.newBuilder().apply {
                 addEvents(event(UNKNOWN_BOOK, KNOWN_SCOPE, INTERVAL_START.plus(INTERVAL_HALF_LENGTH)))
@@ -110,8 +115,9 @@ internal class TestEventController {
     }
 
     @Test
-    fun `receive unknown group`() {
-        assertFailsWith<IllegalStateException>("Check event with unknown group") {
+    fun `receive unknown scope`() {
+        val eventController = createController(BOOK_TO_SCOPES)
+        assertFailsWith<IllegalStateException>("Check event with unknown scope") {
             eventController.actual(EventBatch.newBuilder().apply {
                 addEvents(event(KNOWN_BOOK, UNKNOWN_SCOPE, INTERVAL_START.plus(INTERVAL_HALF_LENGTH)))
             }.build())
@@ -125,8 +131,10 @@ internal class TestEventController {
         assertFalse(eventController.await(1, TimeUnit.NANOSECONDS), "Await uncompleted state")
     }
 
-    @Test
-    fun `receive out of time event`() {
+    @ParameterizedTest
+    @MethodSource("allCombinations")
+    fun `receive out of time event`(bookToScope: Map<String, Set<String>>) {
+        val eventController = createController(bookToScope)
         assertFailsWith<IllegalStateException>("Check event before interval start") {
             eventController.actual(EventBatch.newBuilder().apply {
                 addEvents(event(KNOWN_BOOK, KNOWN_SCOPE, INTERVAL_START.minusNanos(1)))
@@ -149,13 +157,17 @@ internal class TestEventController {
         assertFalse(eventController.await(1, TimeUnit.NANOSECONDS), "Await uncompleted state")
     }
 
-    @Test
-    fun `new controller`() {
+    @ParameterizedTest
+    @MethodSource("allCombinations")
+    fun `new controller`(bookToScope: Map<String, Set<String>>) {
+        val eventController = createController(bookToScope)
         assertFalse(eventController.await(1, TimeUnit.NANOSECONDS), "Await empty state")
     }
 
-    @Test
-    fun `receive correct events`() {
+    @ParameterizedTest
+    @MethodSource("allCombinations")
+    fun `receive correct events`(bookToScope: Map<String, Set<String>>) {
+        val eventController = createController(bookToScope)
         val minEvent = event(KNOWN_BOOK, KNOWN_SCOPE, INTERVAL_START)
 
         eventController.actual(EventBatch.newBuilder().apply {
@@ -202,8 +214,10 @@ internal class TestEventController {
         assertTrue(eventController.await(1, TimeUnit.NANOSECONDS), "Await empty state")
     }
 
-    @Test
-    fun `multiple expected method calls`() {
+    @ParameterizedTest
+    @MethodSource("allCombinations")
+    fun `multiple expected method calls`(bookToScope: Map<String, Set<String>>) {
+        val eventController = createController(bookToScope)
         val cycles = 2
         repeat(cycles) {
             eventController.actual(EventBatch.newBuilder().apply {
@@ -239,6 +253,14 @@ internal class TestEventController {
         }
     }.build()
 
+    private fun createController(bookToScope: Map<String, Set<String>>) = EventController(
+        processor,
+        INTERVAL_EVENT_ID,
+        INTERVAL_START.toTimestamp(),
+        INTERVAL_END.toTimestamp(),
+        bookToScope
+    )
+
     companion object {
         private val INTERVAL_HALF_LENGTH = Duration.ofMinutes(1)
         private val INTERVAL_LENGTH = INTERVAL_HALF_LENGTH + INTERVAL_HALF_LENGTH
@@ -251,11 +273,18 @@ internal class TestEventController {
         private const val KNOWN_SCOPE = "known-scope"
         private const val UNKNOWN_SCOPE = "unknown-scope"
         private val BOOK_TO_SCOPES = mapOf(KNOWN_BOOK to setOf(KNOWN_SCOPE))
+        private val BOOK_ONLY = mapOf(KNOWN_BOOK to emptySet<String>())
 
         fun <T> verify(mock: T, mode: VerificationMode, calls: List<T.() -> Any>) {
             calls.forEach { call ->
                 verify(mock, mode).call()
             }
         }
+
+        @JvmStatic
+        fun allCombinations() = listOf(
+            Arguments.of(BOOK_ONLY),
+            Arguments.of(BOOK_TO_SCOPES),
+        )
     }
 }

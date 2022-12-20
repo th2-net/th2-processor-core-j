@@ -45,8 +45,8 @@ class EventCrawler(
 
     private val bookToScopes = requireNotNull(
         requireNotNull(context.configuration.events).bookToScopes
-    ).also {
-        check(it.isNotEmpty()) {
+    ).also { map ->
+        check(map.isNotEmpty()) {
             "Incorrect configuration parameters: the `bookToScopes` option is empty"
         }
     }

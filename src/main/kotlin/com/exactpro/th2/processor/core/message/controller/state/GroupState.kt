@@ -25,6 +25,7 @@ import com.exactpro.th2.common.utils.message.timestamp
 import com.exactpro.th2.dataprovider.lw.grpc.MessageLoadedStatistic
 import com.exactpro.th2.dataprovider.lw.grpc.MessageLoadedStatistic.GroupStat
 import com.exactpro.th2.processor.core.state.StateUpdater
+import com.exactpro.th2.processor.utility.check
 import com.exactpro.th2.processor.utility.compareTo
 import com.google.protobuf.Timestamp
 import com.google.protobuf.util.Timestamps
@@ -118,7 +119,7 @@ internal class GroupState(
             "Any message has empty group name. ${this.toJson()}"
         }
 
-        check(bookToGroups[book]?.contains(group) ?: false) {
+        bookToGroups.check(book, group) {
             "Unexpected message ${logId}, book $book, group $group"
         }
 
@@ -140,7 +141,7 @@ internal class GroupState(
             "Group statistic has empty group name. ${this.toJson()}"
         }
 
-        check(bookToGroups[bookId.name]?.contains(group.name) ?: false) {
+        bookToGroups.check(bookId.name, group.name) {
             "Unexpected statistic for book ${bookId.name}, group ${group.name}. ${this.toJson()}"
         }
 

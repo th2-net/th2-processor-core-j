@@ -47,8 +47,8 @@ internal class GroupMessageCrawler(
 
     private val bookToGroups = requireNotNull(
         requireNotNull(context.configuration.messages).bookToGroups
-    ).also {
-        check(it.isNotEmpty()) {
+    ).also { map ->
+        check(map.isNotEmpty()) {
             "Incorrect configuration parameters: the `bookToGroups` option is empty"
         }
     }
