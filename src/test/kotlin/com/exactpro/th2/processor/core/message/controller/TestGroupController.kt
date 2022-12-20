@@ -67,7 +67,7 @@ internal class TestGroupController {
         assertDoesNotThrow("Pass empty expected") {
             controller.expected(MessageLoadedStatistic.getDefaultInstance())
         }
-        assertFalse(controller.await(1, TimeUnit.NANOSECONDS), "Await uncompleted state")
+        assertTrue(controller.await(1, TimeUnit.NANOSECONDS), "Await completed state")
     }
 
     @ParameterizedTest

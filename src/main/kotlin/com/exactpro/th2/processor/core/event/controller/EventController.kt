@@ -52,7 +52,6 @@ internal class EventController(
                 processor.handle(intervalEventId, event)
             }
         }.ifTrue(::signal)
-        super.actual(batch)
     }
 
     override fun expected(loadedStatistic: MessageLoadedStatistic) {

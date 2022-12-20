@@ -55,7 +55,6 @@ internal abstract class MessageController(
                 }
             }
         }.ifTrue(::signal)
-        super.actual(batch)
     }
     override fun expected(loadedStatistic: MessageLoadedStatistic) {
         updateExpectedState(loadedStatistic).ifTrue(::signal)

@@ -64,7 +64,7 @@ internal class TestEventController {
         assertDoesNotThrow("Pass empty expected") {
             eventController.expected(EventLoadedStatistic.getDefaultInstance())
         }
-        assertFalse(eventController.await(1, TimeUnit.NANOSECONDS), "Await uncompleted state")
+        assertTrue(eventController.await(1, TimeUnit.NANOSECONDS), "Await completed state")
     }
 
     @ParameterizedTest

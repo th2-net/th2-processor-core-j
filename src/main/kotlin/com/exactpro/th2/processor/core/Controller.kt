@@ -37,17 +37,13 @@ abstract class Controller<T: Message>(
     private var lastProcessedTimestamp: Timestamp = Timestamps.MIN_VALUE
     private val lock = ReentrantLock()
     private val condition = lock.newCondition()
-    @Volatile
-    private var receivedActual = false
-    @Volatile
+    @Volatile // the actual method won't be call when collector expected zero incoming messages
     private var receivedExpected = false
 
     open val isStateComplete: Boolean
-        get() = receivedActual && receivedExpected
+        get() = receivedExpected
 
-    open fun actual(batch: T) {
-        receivedActual = true
-    }
+    abstract fun actual(batch: T)
     open fun expected(loadedStatistic: MessageLoadedStatistic) {
         receivedExpected = true
     }

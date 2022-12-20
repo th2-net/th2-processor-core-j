@@ -132,12 +132,18 @@ metadata:
   name: my-processor
 spec:
   pins:
-    - name: to_data_provider
-      connection-type: grpc-client
-      service-class: com.exactpro.th2.dataprovider.lw.grpc.DataProviderService
-    - name: to_data_provider_stream
-      connection-type: grpc-client
-      service-class: com.exactpro.th2.dataprovider.lw.grpc.QueueDataProviderService
+    grpc:
+      client:
+      - name: to_data_provider
+        service-class: com.exactpro.th2.dataprovider.lw.grpc.DataProviderService
+        linkTo:
+        - box: lw-data-provider
+          pin: server
+      - name: to_data_provider_stream
+        service-class: com.exactpro.th2.dataprovider.lw.grpc.QueueDataProviderService
+        linkTo:
+        - box: lw-data-provider
+          pin: server
 ```
 
 ### Configuration example
@@ -179,10 +185,16 @@ spec:
       cacheCapacity: 100
       strategy: "single"
   pins:
-    - name: to_data_provider
-      connection-type: grpc-client
-      service-class: com.exactpro.th2.dataprovider.lw.grpc.DataProviderService
-    - name: to_data_provider_stream
-      connection-type: grpc-client
-      service-class: com.exactpro.th2.dataprovider.lw.grpc.QueueDataProviderService
+    grpc:
+      client:
+        - name: to_data_provider
+          service-class: com.exactpro.th2.dataprovider.lw.grpc.DataProviderService
+          linkTo:
+            - box: lw-data-provider
+              pin: server
+        - name: to_data_provider_stream
+          service-class: com.exactpro.th2.dataprovider.lw.grpc.QueueDataProviderService
+          linkTo:
+            - box: lw-data-provider
+              pin: server
 ```
