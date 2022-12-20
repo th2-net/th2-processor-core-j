@@ -64,7 +64,7 @@ internal class TestEventController {
         assertDoesNotThrow("Pass empty expected") {
             eventController.expected(EventLoadedStatistic.getDefaultInstance())
         }
-        assertTrue(eventController.await(1, TimeUnit.NANOSECONDS), "Await empty state")
+        assertFalse(eventController.await(1, TimeUnit.NANOSECONDS), "Await uncompleted state")
     }
 
     @Test
@@ -77,7 +77,7 @@ internal class TestEventController {
                 }
             }.build())
         }
-        assertTrue(eventController.await(1, TimeUnit.NANOSECONDS), "Await empty state")
+        assertFalse(eventController.await(1, TimeUnit.NANOSECONDS), "Await uncompleted state")
     }
 
     @Test
@@ -90,7 +90,7 @@ internal class TestEventController {
                 }
             }.build())
         }
-        assertTrue(eventController.await(1, TimeUnit.NANOSECONDS), "Await empty state")
+        assertFalse(eventController.await(1, TimeUnit.NANOSECONDS), "Await uncompleted state")
     }
 
     @Test
@@ -106,7 +106,7 @@ internal class TestEventController {
             { handle(eq(INTERVAL_EVENT_ID), any<Message>()) },
             { handle(eq(INTERVAL_EVENT_ID), any<Event>()) },
         ))
-        assertTrue(eventController.await(1, TimeUnit.NANOSECONDS), "Await empty state")
+        assertFalse(eventController.await(1, TimeUnit.NANOSECONDS), "Await uncompleted state")
     }
 
     @Test
@@ -122,7 +122,7 @@ internal class TestEventController {
             { handle(eq(INTERVAL_EVENT_ID), any<Message>()) },
             { handle(eq(INTERVAL_EVENT_ID), any<Event>()) },
         ))
-        assertTrue(eventController.await(1, TimeUnit.NANOSECONDS), "Await empty state")
+        assertFalse(eventController.await(1, TimeUnit.NANOSECONDS), "Await uncompleted state")
     }
 
     @Test
@@ -146,7 +146,12 @@ internal class TestEventController {
             { handle(eq(INTERVAL_EVENT_ID), any<Message>()) },
             { handle(eq(INTERVAL_EVENT_ID), any<Event>()) },
         ))
-        assertTrue(eventController.await(1, TimeUnit.NANOSECONDS), "Await empty state")
+        assertFalse(eventController.await(1, TimeUnit.NANOSECONDS), "Await uncompleted state")
+    }
+
+    @Test
+    fun `new controller`() {
+        assertFalse(eventController.await(1, TimeUnit.NANOSECONDS), "Await empty state")
     }
 
     @Test

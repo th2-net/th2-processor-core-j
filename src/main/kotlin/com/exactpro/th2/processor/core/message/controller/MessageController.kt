@@ -23,6 +23,8 @@ import com.exactpro.th2.common.grpc.EventID
 import com.exactpro.th2.common.grpc.MessageGroupBatch
 import com.exactpro.th2.common.utils.message.id
 import com.exactpro.th2.common.utils.message.timestamp
+import com.exactpro.th2.dataprovider.lw.grpc.EventLoadedStatistic
+import com.exactpro.th2.dataprovider.lw.grpc.MessageLoadedStatistic
 import com.exactpro.th2.processor.api.IProcessor
 import com.exactpro.th2.processor.core.Controller
 import com.exactpro.th2.processor.core.message.CrawlerHandleMessageException
@@ -39,7 +41,7 @@ internal abstract class MessageController(
     intervalEventId
 ) {
     override fun actual(batch: MessageGroupBatch) {
-        updateState {
+        updateActualState {
             for (group in batch.groupsList) {
                 for (anyMessage in group.messagesList) {
                     runCatching {
@@ -53,8 +55,18 @@ internal abstract class MessageController(
                 }
             }
         }.ifTrue(::signal)
+        super.actual(batch)
     }
-    protected abstract fun updateState(func: StateUpdater<AnyMessage>.() -> Unit): Boolean
+    override fun expected(loadedStatistic: MessageLoadedStatistic) {
+        updateExpectedState(loadedStatistic).ifTrue(::signal)
+        super.expected(loadedStatistic)
+    }
+
+    override fun expected(loadedStatistic: EventLoadedStatistic) {
+        throw UnsupportedOperationException()
+    }
+    protected abstract fun updateActualState(func: StateUpdater<AnyMessage>.() -> Unit): Boolean
+    protected abstract fun updateExpectedState(loadedStatistic: MessageLoadedStatistic): Boolean
 
     private fun handle(anyMessage: AnyMessage) {
         when (kind) {

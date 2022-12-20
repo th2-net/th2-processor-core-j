@@ -37,17 +37,28 @@ abstract class Controller<T: Message>(
     private var lastProcessedTimestamp: Timestamp = Timestamps.MIN_VALUE
     private val lock = ReentrantLock()
     private val condition = lock.newCondition()
+    @Volatile
+    private var receivedActual = false
+    @Volatile
+    private var receivedExpected = false
 
-    abstract val isStateEmpty: Boolean
-    abstract fun actual(batch: T)
+    open val isStateComplete: Boolean
+        get() = receivedActual && receivedExpected
+
+    open fun actual(batch: T) {
+        receivedActual = true
+    }
     open fun expected(loadedStatistic: MessageLoadedStatistic) {
-        throw UnsupportedOperationException()
+        receivedExpected = true
     }
     open fun expected(loadedStatistic: EventLoadedStatistic) {
-        throw UnsupportedOperationException()
+        receivedExpected = true
     }
+    /**
+     * Wait complete state
+     */
     fun await(time: Long, unit: TimeUnit): Boolean {
-        if (isStateEmpty) {
+        if (isStateComplete) {
             return true
         }
 
@@ -74,7 +85,7 @@ abstract class Controller<T: Message>(
             }
         }
 
-        return isStateEmpty
+        return isStateComplete
     }
     protected fun updateLastProcessed(timestamp: Timestamp) {
         lastProcessedTimestamp = timestamp

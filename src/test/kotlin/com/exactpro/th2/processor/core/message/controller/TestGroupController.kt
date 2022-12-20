@@ -29,6 +29,7 @@ import com.exactpro.th2.dataprovider.lw.grpc.EventLoadedStatistic
 import com.exactpro.th2.dataprovider.lw.grpc.MessageLoadedStatistic
 import com.exactpro.th2.processor.api.IProcessor
 import com.exactpro.th2.processor.core.message.CrawlerHandleMessageException
+import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertDoesNotThrow
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.Arguments
@@ -43,6 +44,8 @@ import org.mockito.verification.VerificationMode
 import java.time.Duration
 import java.time.Instant
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicLong
+import kotlin.random.Random
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
@@ -81,7 +84,7 @@ internal class TestGroupController {
         assertDoesNotThrow("Pass empty expected") {
             controller.expected(MessageLoadedStatistic.getDefaultInstance())
         }
-        assertTrue(controller.await(1, TimeUnit.NANOSECONDS), "Await empty state")
+        assertFalse(controller.await(1, TimeUnit.NANOSECONDS), "Await uncompleted state")
     }
 
     @ParameterizedTest
@@ -96,7 +99,7 @@ internal class TestGroupController {
                 }
             }.build())
         }
-        assertTrue(controller.await(1, TimeUnit.NANOSECONDS), "Await empty state")
+        assertFalse(controller.await(1, TimeUnit.NANOSECONDS), "Await uncompleted state")
     }
 
     @ParameterizedTest
@@ -111,7 +114,7 @@ internal class TestGroupController {
                 }
             }.build())
         }
-        assertTrue(controller.await(1, TimeUnit.NANOSECONDS), "Await empty state")
+        assertFalse(controller.await(1, TimeUnit.NANOSECONDS), "Await uncompleted state")
     }
 
     @ParameterizedTest
@@ -131,7 +134,7 @@ internal class TestGroupController {
             { handle(eq(INTERVAL_EVENT_ID), any<Message>()) },
             { handle(eq(INTERVAL_EVENT_ID), any<Event>()) },
         ))
-        assertTrue(controller.await(1, TimeUnit.NANOSECONDS), "Await empty state")
+        assertFalse(controller.await(1, TimeUnit.NANOSECONDS), "Await uncompleted state")
     }
 
     @ParameterizedTest
@@ -151,7 +154,7 @@ internal class TestGroupController {
             { handle(eq(INTERVAL_EVENT_ID), any<Message>()) },
             { handle(eq(INTERVAL_EVENT_ID), any<Event>()) },
         ))
-        assertTrue(controller.await(1, TimeUnit.NANOSECONDS), "Await empty state")
+        assertFalse(controller.await(1, TimeUnit.NANOSECONDS), "Await uncompleted state")
     }
 
     @ParameterizedTest
@@ -186,7 +189,7 @@ internal class TestGroupController {
             { handle(eq(INTERVAL_EVENT_ID), any<Message>()) },
             { handle(eq(INTERVAL_EVENT_ID), any<Event>()) },
         ))
-        assertTrue(controller.await(1, TimeUnit.NANOSECONDS), "Await empty state")
+        assertFalse(controller.await(1, TimeUnit.NANOSECONDS), "Await uncompleted state")
     }
 
     @ParameterizedTest
@@ -261,6 +264,60 @@ internal class TestGroupController {
         assertTrue(controller.await(1, TimeUnit.NANOSECONDS), "Await empty state")
     }
 
+    @Test
+    fun `new controller`() {
+        assertFalse(messageController.await(1, TimeUnit.NANOSECONDS), "Await empty state")
+        assertFalse(rawMessageController.await(1, TimeUnit.NANOSECONDS), "Await empty state")
+    }
+
+    @Test
+    fun `receive several messages after pipeline`() {
+        val builder = message(KNOWN_BOOK, KNOWN_GROUP, INTERVAL_START).toBuilder()
+        val first = builder.apply {
+            metadataBuilder.apply {
+                idBuilder.apply {
+                    sequence = 1
+                    addAllSubsequence(listOf(1))
+                }
+            }
+        }.build()
+        val second = builder.apply {
+            metadataBuilder.apply {
+                idBuilder.apply {
+                    sequence = 1
+                    addAllSubsequence(listOf(2))
+                }
+            }
+        }.build()
+
+        messageController.actual(MessageGroupBatch.newBuilder().apply {
+            addGroupsBuilder().apply {
+                this += first
+                this += second
+            }
+        }.build())
+
+        verify(processor, times(1).description("First message with start interval timestamp")).handle(eq(INTERVAL_EVENT_ID), eq(first))
+        verify(processor, times(1).description("Second message with start interval timestamp")).handle(eq(INTERVAL_EVENT_ID), eq(second))
+        verify(processor, never().description("Raw messages with start interval timestamp")).handle(eq(INTERVAL_EVENT_ID), any<RawMessage>())
+        verify(processor, never().description("Events with start interval timestamp")).handle(eq(INTERVAL_EVENT_ID), any<Event>())
+
+        assertFalse(messageController.await(1, TimeUnit.NANOSECONDS), "Await not empty state")
+        messageController.expected(MessageLoadedStatistic.newBuilder().apply {
+            addStatBuilder().apply {
+                bookIdBuilder.apply { name = KNOWN_BOOK }
+                groupBuilder.apply { name = KNOWN_GROUP }
+                count = 1
+            }
+        }.build())
+
+        verify(processor, times(2).description("Final message handler verification")).handle(any(), any<Message>())
+        verify(processor, never().description("Final raw message handler verification")).handle(any(), any<RawMessage>())
+        verify(processor, never().description("Final event handler verification")).handle(any(), any<Event>())
+
+        assertTrue(messageController.await(1, TimeUnit.NANOSECONDS), "Await empty state")
+    }
+
     @ParameterizedTest
     @MethodSource("kinds")
     fun `multiple expected method calls`(kind: KindCase) {
@@ -279,8 +336,8 @@ internal class TestGroupController {
             KindCase.RAW_MESSAGE to { handle(eq(INTERVAL_EVENT_ID), any<RawMessage>()) },
         ))
 
-        repeat(cycles) {
-            assertFalse(controller.await(1, TimeUnit.NANOSECONDS), "Await not empty state")
+        repeat(cycles) { cycle ->
+            assertFalse(controller.await(1, TimeUnit.NANOSECONDS), "Await not empty state, cycle: $cycle")
             controller.expected(MessageLoadedStatistic.newBuilder().apply {
                 addStatBuilder().apply {
                     bookIdBuilder.apply { name = KNOWN_BOOK }
@@ -319,6 +376,7 @@ internal class TestGroupController {
                 connectionIdBuilder.apply {
                     sessionGroup = group
                     sessionAlias = SESSION_ALIAS
+                    sequence = SEQUENCE_COUNTER.incrementAndGet()
                 }
             }
         }
@@ -332,12 +390,14 @@ internal class TestGroupController {
                 connectionIdBuilder.apply {
                     sessionGroup = group
                     sessionAlias = SESSION_ALIAS
+                    sequence = SEQUENCE_COUNTER.incrementAndGet()
                 }
             }
         }
     }.build()
 
     companion object {
+        private val SEQUENCE_COUNTER = AtomicLong(Random.nextLong())
         private val INTERVAL_HALF_LENGTH = Duration.ofMinutes(1)
         private val INTERVAL_LENGTH = INTERVAL_HALF_LENGTH + INTERVAL_HALF_LENGTH
         private val INTERVAL_START = Instant.now()

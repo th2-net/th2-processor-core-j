@@ -38,29 +38,34 @@ internal class GroupState(
     private val kind: AnyMessage.KindCase,
     private val bookToGroups: Map<String, Set<String>>
 ) {
-    private val groupToNumber = ConcurrentHashMap<StateKey, Long>()
+    private val groupToNumber = ConcurrentHashMap<StateKey, StreamState>()
     val isStateEmpty: Boolean
         get() = groupToNumber.isEmpty()
 
     fun plus(func: StateUpdater<AnyMessage>.() -> Unit): Boolean {
-        val temporaryState = mutableMapOf<StateKey, Long>()
+        val temporaryState = mutableMapOf<StateKey, StreamState>()
         object : StateUpdater<AnyMessage> {
             @Suppress("PARAMETER_NAME_CHANGED_ON_OVERRIDE")
             override fun updateState(anyMessage: AnyMessage) {
-                temporaryState.compute(anyMessage.toStateKey()) { _, current -> (current ?: 0L) + 1 }
+                temporaryState.compute(anyMessage.check().toStateKey()) { _, currentStreamSate ->
+                    (currentStreamSate ?: StreamState()).apply { actual(anyMessage) }
+                }
             }
         }.func()
 
         var needCheck = false
-        temporaryState.forEach { (group, count) ->
+        temporaryState.forEach { (group, streamState) ->
             groupToNumber.compute(group) { _, previous ->
-                when (val result = (previous ?: 0L) + count) {
-                    0L -> {
+                if (previous == null) {
+                    streamState
+                } else {
+                    val isComplete = previous.plus(streamState)
+                    if (isComplete) {
                         needCheck = true
                         null
+                    } else {
+                        previous
                     }
-
-                    else -> result
                 }
             }
         }
@@ -74,12 +79,16 @@ internal class GroupState(
         loadedStatistic.statList.forEach { groupStat ->
 
             groupToNumber.compute(groupStat.toStateKey()) { _, previous ->
-                when (val result = (previous ?: 0L) - groupStat.count) {
-                    0L -> {
+                if (previous == null) {
+                    StreamState().apply { expected(groupStat.count) }
+                } else {
+                    val isComplete = previous.expected(groupStat.count)
+                    if (isComplete) {
                         needCheck = true
                         null
+                    } else {
+                        previous
                     }
-                    else -> result
                 }
             }
         }
@@ -87,8 +96,7 @@ internal class GroupState(
         K_LOGGER.debug { "Minus operation executed: ${loadedStatistic.toJson()}, state = $groupToNumber, need check = $needCheck" }
         return needCheck && isStateEmpty
     }
-
-    private fun AnyMessage.toStateKey(): StateKey {
+    private fun AnyMessage.check(): AnyMessage {
         check(kindCase == kind) {
             "Incorrect message kind ${logId}, " +
                     "actual ${kindCase}, expected $kind"
@@ -100,12 +108,14 @@ internal class GroupState(
                     "actual ${Timestamps.toString(timestamp)}, " +
                     "expected [${Timestamps.toString(startTime)} - ${Timestamps.toString(endTime)})"
         }
-
+        return this
+    }
+    private fun AnyMessage.toStateKey(): StateKey {
         val book = requireNotNull(book) {
-            "Group statistic has empty book name. ${this.toJson()}"
+            "Any message has empty book name. ${this.toJson()}"
         }
         val group = requireNotNull(sessionGroup) {
-            "Group statistic has empty group name. ${this.toJson()}"
+            "Any message has empty group name. ${this.toJson()}"
         }
 
         check(bookToGroups[book]?.contains(group) ?: false) {

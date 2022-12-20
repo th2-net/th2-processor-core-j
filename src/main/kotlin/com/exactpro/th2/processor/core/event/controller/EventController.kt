@@ -20,6 +20,7 @@ import com.exactpro.th2.common.grpc.Event
 import com.exactpro.th2.common.grpc.EventBatch
 import com.exactpro.th2.common.grpc.EventID
 import com.exactpro.th2.dataprovider.lw.grpc.EventLoadedStatistic
+import com.exactpro.th2.dataprovider.lw.grpc.MessageLoadedStatistic
 import com.exactpro.th2.processor.api.IProcessor
 import com.exactpro.th2.processor.core.Controller
 import com.exactpro.th2.processor.core.event.controller.state.EventState
@@ -38,8 +39,8 @@ internal class EventController(
 ) {
     private val eventState = EventState(startTime, endTime, bookToScopes)
 
-    override val isStateEmpty: Boolean
-        get() = eventState.isStateEmpty
+    override val isStateComplete: Boolean
+        get() = super.isStateComplete && eventState.isStateEmpty
 
     override fun actual(batch: EventBatch) {
         updateState {
@@ -51,10 +52,16 @@ internal class EventController(
                 processor.handle(intervalEventId, event)
             }
         }.ifTrue(::signal)
+        super.actual(batch)
+    }
+
+    override fun expected(loadedStatistic: MessageLoadedStatistic) {
+        throw UnsupportedOperationException()
     }
 
     override fun expected(loadedStatistic: EventLoadedStatistic) {
         eventState.minus(loadedStatistic).ifTrue(::signal)
+        super.expected(loadedStatistic)
     }
 
     private fun updateState(func: StateUpdater<Event>.() -> Unit): Boolean = eventState.plus(func)

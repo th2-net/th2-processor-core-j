@@ -27,7 +27,7 @@ class DummyController<T: Message>(
     processorEventID
 ) {
 
-    override val isStateEmpty: Boolean = true
+    override val isStateComplete: Boolean = true
 
     override fun actual(batch: T) {
         K_LOGGER.debug { "Skip ${batch.toJson()}" }
