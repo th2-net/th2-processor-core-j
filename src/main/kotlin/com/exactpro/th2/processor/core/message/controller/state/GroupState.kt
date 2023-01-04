@@ -17,6 +17,7 @@
 package com.exactpro.th2.processor.core.message.controller.state
 
 import com.exactpro.th2.common.grpc.AnyMessage
+import com.exactpro.th2.common.grpc.MessageGroup
 import com.exactpro.th2.common.message.logId
 import com.exactpro.th2.common.message.toJson
 import com.exactpro.th2.common.utils.message.book
@@ -39,34 +40,28 @@ internal class GroupState(
     private val kind: AnyMessage.KindCase,
     private val bookToGroups: Map<String, Set<String>>
 ) {
-    private val groupToNumber = ConcurrentHashMap<StateKey, StreamState>()
+    private val groupToNumber = ConcurrentHashMap<StateKey, Long>()
     val isStateEmpty: Boolean
         get() = groupToNumber.isEmpty()
 
-    fun plus(func: StateUpdater<AnyMessage>.() -> Unit): Boolean {
-        val temporaryState = mutableMapOf<StateKey, StreamState>()
-        object : StateUpdater<AnyMessage> {
+    fun plus(func: StateUpdater<MessageGroup>.() -> Unit): Boolean {
+        val temporaryState = mutableMapOf<StateKey, Long>()
+        object : StateUpdater<MessageGroup> {
             @Suppress("PARAMETER_NAME_CHANGED_ON_OVERRIDE")
-            override fun updateState(anyMessage: AnyMessage) {
-                temporaryState.compute(anyMessage.check().toStateKey()) { _, currentStreamSate ->
-                    (currentStreamSate ?: StreamState()).apply { actual(anyMessage) }
-                }
+            override fun updateState(messageGroup: MessageGroup) {
+                temporaryState.compute(messageGroup.check().toStateKey()) { _, current -> (current ?: 0L) + 1 }
             }
         }.func()
 
         var needCheck = false
-        temporaryState.forEach { (group, streamState) ->
+        temporaryState.forEach { (group, count) ->
             groupToNumber.compute(group) { _, previous ->
-                if (previous == null) {
-                    streamState
-                } else {
-                    val isComplete = previous.plus(streamState)
-                    if (isComplete) {
+                when (val result = (previous ?: 0L) + count) {
+                    0L -> {
                         needCheck = true
                         null
-                    } else {
-                        previous
                     }
+                    else -> result
                 }
             }
         }
@@ -78,18 +73,13 @@ internal class GroupState(
     fun minus(loadedStatistic: MessageLoadedStatistic): Boolean {
         var needCheck = false
         loadedStatistic.statList.forEach { groupStat ->
-
             groupToNumber.compute(groupStat.toStateKey()) { _, previous ->
-                if (previous == null) {
-                    StreamState().apply { expected(groupStat.count) }
-                } else {
-                    val isComplete = previous.expected(groupStat.count)
-                    if (isComplete) {
+                when (val result = (previous ?: 0L) - groupStat.count) {
+                    0L -> {
                         needCheck = true
                         null
-                    } else {
-                        previous
                     }
+                    else -> result
                 }
             }
         }
@@ -97,30 +87,38 @@ internal class GroupState(
         K_LOGGER.debug { "Minus operation executed: ${loadedStatistic.toJson()}, state = $groupToNumber, need check = $needCheck" }
         return needCheck && isStateEmpty
     }
-    private fun AnyMessage.check(): AnyMessage {
-        check(kindCase == kind) {
-            "Incorrect message kind ${logId}, " +
-                    "actual ${kindCase}, expected $kind"
+    private fun MessageGroup.check(): MessageGroup {
+        val firstMessage = requireNotNull(messagesList.first()) {
+            "Message group can't be empty"
         }
-
-        val timestamp = timestamp
+        val timestamp = firstMessage.timestamp
         check(timestamp >= startTime && timestamp < endTime) {
-            "Out of interval message ${logId}, " +
+            "Out of interval message ${firstMessage.logId}, " +
                     "actual ${Timestamps.toString(timestamp)}, " +
                     "expected [${Timestamps.toString(startTime)} - ${Timestamps.toString(endTime)})"
         }
+        messagesList.forEach { anyMessage ->
+            check(anyMessage.kindCase == kind) {
+                "Incorrect message kind ${anyMessage.logId}, " +
+                        "actual ${anyMessage.kindCase}, expected $kind"
+            }
+        }
         return this
     }
-    private fun AnyMessage.toStateKey(): StateKey {
-        val book = requireNotNull(book) {
+    private fun MessageGroup.toStateKey(): StateKey {
+        val firstMessage = requireNotNull(messagesList.first()) {
+            "Message group can't be empty"
+        }
+
+        val book = requireNotNull(firstMessage.book) {
             "Any message has empty book name. ${this.toJson()}"
         }
-        val group = requireNotNull(sessionGroup) {
+        val group = requireNotNull(firstMessage.sessionGroup) {
             "Any message has empty group name. ${this.toJson()}"
         }
 
         bookToGroups.check(book, group) {
-            "Unexpected message ${logId}, book $book, group $group"
+            "Unexpected message ${firstMessage.logId}, book $book, group $group"
         }
 
         return StateKey(book, group)

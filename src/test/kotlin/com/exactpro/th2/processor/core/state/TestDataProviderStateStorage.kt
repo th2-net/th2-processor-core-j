@@ -59,6 +59,7 @@ internal class TestDataProviderStateStorage {
                 DUMMY_MESSAGE_ROUTER,
                 eventBatcher,
                 DUMMY_DATA_PROVIDER,
+                BOOK_NAME,
                 STATE_SESSION_ALIAS,
                 MIN_STATE_SIZE + METADATA_SIZE
             )
@@ -69,6 +70,7 @@ internal class TestDataProviderStateStorage {
                 DUMMY_MESSAGE_ROUTER,
                 eventBatcher,
                 DUMMY_DATA_PROVIDER,
+                BOOK_NAME,
                 STATE_SESSION_ALIAS,
                 MIN_STATE_SIZE + METADATA_SIZE - 1
             )
@@ -88,7 +90,13 @@ internal class TestDataProviderStateStorage {
             on { searchMessages(any()) }.thenAnswer { responseIterator.next() }
         }
 
-        val storage = DataProviderStateStorage(DUMMY_MESSAGE_ROUTER, eventBatcher, dataProvider, STATE_SESSION_ALIAS)
+        val storage = DataProviderStateStorage(
+            DUMMY_MESSAGE_ROUTER,
+            eventBatcher,
+            dataProvider,
+            BOOK_NAME,
+            STATE_SESSION_ALIAS
+        )
         assertNull(storage.loadState(EVENT_ID), "Load empty state")
         verify(eventBatcher, times(1).description("Publish events")).onEvent(any())
     }
@@ -107,7 +115,13 @@ internal class TestDataProviderStateStorage {
             on { searchMessages(any()) }.thenAnswer { responseIterator.next() }
         }
 
-        val storage = DataProviderStateStorage(DUMMY_MESSAGE_ROUTER, eventBatcher, dataProvider, STATE_SESSION_ALIAS)
+        val storage = DataProviderStateStorage(
+            DUMMY_MESSAGE_ROUTER,
+            eventBatcher,
+            dataProvider,
+            BOOK_NAME,
+            STATE_SESSION_ALIAS
+        )
 
         assertArrayEquals(STATE, storage.loadState(EVENT_ID), "Load state")
         verify(dataProvider, times(1).description("Number of search messages calls")).searchMessages(any())
@@ -137,7 +151,7 @@ internal class TestDataProviderStateStorage {
                         createMessageSearchResponse(
                             stateType,
                             timestamp,
-                            revertedIndex.toLong(),
+                            revertedIndex.toLong() + 1,
                             data
                         )
                     ).iterator()
@@ -152,7 +166,13 @@ internal class TestDataProviderStateStorage {
             on { searchMessages(any()) }.thenAnswer { responseIterator.next() }
         }
 
-        val storage = DataProviderStateStorage(DUMMY_MESSAGE_ROUTER, eventBatcher, dataProvider, STATE_SESSION_ALIAS)
+        val storage = DataProviderStateStorage(
+            DUMMY_MESSAGE_ROUTER,
+            eventBatcher,
+            dataProvider,
+            BOOK_NAME,
+            STATE_SESSION_ALIAS
+        )
         assertArrayEquals(STATE, storage.loadState(EVENT_ID), "Load state")
         verify(dataProvider, times(parts).description("Number of search messages calls")).searchMessages(any())
         verify(eventBatcher, times(1).description("Publish events")).onEvent(any())
@@ -195,7 +215,13 @@ internal class TestDataProviderStateStorage {
             on { searchMessages(any()) }.thenAnswer { responseIterator.next() }
         }
 
-        val storage = DataProviderStateStorage(DUMMY_MESSAGE_ROUTER, eventBatcher, dataProvider, STATE_SESSION_ALIAS)
+        val storage = DataProviderStateStorage(
+            DUMMY_MESSAGE_ROUTER,
+            eventBatcher,
+            dataProvider,
+            BOOK_NAME,
+            STATE_SESSION_ALIAS
+        )
         assertArrayEquals(STATE, storage.loadState(EVENT_ID), "Load state")
         verify(dataProvider, times(8).description("Number of search messages calls")).searchMessages(any())
         verify(eventBatcher, times(1).description("Publish events")).onEvent(any())
@@ -232,7 +258,13 @@ internal class TestDataProviderStateStorage {
             on { searchMessages(any()) }.thenAnswer { responseIterator.next() }
         }
 
-        val storage = DataProviderStateStorage(DUMMY_MESSAGE_ROUTER, eventBatcher, dataProvider, STATE_SESSION_ALIAS)
+        val storage = DataProviderStateStorage(
+            DUMMY_MESSAGE_ROUTER,
+            eventBatcher,
+            dataProvider,
+            BOOK_NAME,
+            STATE_SESSION_ALIAS
+        )
         assertArrayEquals(STATE, storage.loadState(EVENT_ID), "Load state")
         verify(dataProvider, times(8).description("Number of search messages calls")).searchMessages(any())
         verify(eventBatcher, times(1).description("Publish events")).onEvent(any())
@@ -265,7 +297,13 @@ internal class TestDataProviderStateStorage {
             on { searchMessages(any()) }.thenAnswer { responseIterator.next() }
         }
 
-        val storage = DataProviderStateStorage(DUMMY_MESSAGE_ROUTER, eventBatcher, dataProvider, STATE_SESSION_ALIAS)
+        val storage = DataProviderStateStorage(
+            DUMMY_MESSAGE_ROUTER,
+            eventBatcher,
+            dataProvider,
+            BOOK_NAME,
+            STATE_SESSION_ALIAS
+        )
         assertArrayEquals(STATE, storage.loadState(EVENT_ID), "Load state")
         verify(dataProvider, times(9).description("Number of search messages calls")).searchMessages(any())
         verify(eventBatcher, times(1).description("Publish events")).onEvent(any())
@@ -276,7 +314,13 @@ internal class TestDataProviderStateStorage {
         val messageRouter: MessageRouter<MessageGroupBatch> = mock { }
         val data = ByteArray(MIN_STATE_SIZE)
 
-        val storage = DataProviderStateStorage(messageRouter, eventBatcher, DUMMY_DATA_PROVIDER, STATE_SESSION_ALIAS)
+        val storage = DataProviderStateStorage(
+            messageRouter,
+            eventBatcher,
+            DUMMY_DATA_PROVIDER,
+            BOOK_NAME,
+            STATE_SESSION_ALIAS
+        )
         storage.saveState(EVENT_ID, data)
         verify(messageRouter, times(1).description("State parts")).sendAll(any())
         verify(eventBatcher, times(1).description("Publish events")).onEvent(any())
@@ -288,7 +332,13 @@ internal class TestDataProviderStateStorage {
         val parts = 3
         val data = ByteArray(parts * MIN_STATE_SIZE).apply(Random::nextBytes)
 
-        val storage = DataProviderStateStorage(messageRouter, eventBatcher, DUMMY_DATA_PROVIDER, STATE_SESSION_ALIAS)
+        val storage = DataProviderStateStorage(
+            messageRouter,
+            eventBatcher,
+            DUMMY_DATA_PROVIDER,
+            BOOK_NAME,
+            STATE_SESSION_ALIAS
+        )
         storage.saveState(EVENT_ID, data)
         verify(messageRouter, times(parts).description("State parts")).sendAll(any())
         verify(eventBatcher, times(1).description("Publish events")).onEvent(any())
@@ -317,7 +367,13 @@ internal class TestDataProviderStateStorage {
                 cache.add(invocation.arguments[0] as MessageGroupBatch)
             }
         }
-        val storage = DataProviderStateStorage(messageRouter, eventBatcher, dataProvider, STATE_SESSION_ALIAS)
+        val storage = DataProviderStateStorage(
+            messageRouter,
+            eventBatcher,
+            dataProvider,
+            BOOK_NAME,
+            STATE_SESSION_ALIAS
+        )
 
         val singleData = ByteArray(MIN_STATE_SIZE).apply(Random::nextBytes)
         storage.saveState(EVENT_ID, singleData)
@@ -363,6 +419,7 @@ internal class TestDataProviderStateStorage {
     }
 
     companion object {
+        private const val BOOK_NAME = "book"
         private const val STATE_SESSION_ALIAS = "state"
 
         private val EVENT_ID = EventID.newBuilder().apply {
@@ -388,6 +445,7 @@ internal class TestDataProviderStateStorage {
                     messageIdBuilder.apply {
                         this.timestamp = timestamp
                         this.sequence = sequence
+                        this.bookName = BOOK_NAME
                         connectionIdBuilder.apply {
                             sessionAlias = STATE_SESSION_ALIAS
                         }

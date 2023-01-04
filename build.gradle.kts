@@ -127,6 +127,20 @@ tasks {
         }
     }
 
+    jar {
+        manifest {
+            attributes(
+                "Created-By" to "${System.getProperty("java.version")} (${System.getProperty("java.vendor")})",
+                "Specification-Title" to "",
+                "Specification-Vendor" to "Exactpro Systems LLC",
+                "Implementation-Title" to project.displayName,
+                "Implementation-Vendor" to "Exactpro Systems LLC",
+                "Implementation-Vendor-Id" to "com.exactpro",
+                "Implementation-Version" to project.version
+            )
+        }
+    }
+
     register<Test>("integrationTest") {
         group = "verification"
         useJUnitPlatform {

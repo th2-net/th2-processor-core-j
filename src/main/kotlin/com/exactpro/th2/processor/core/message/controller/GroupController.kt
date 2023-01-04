@@ -18,6 +18,7 @@ package com.exactpro.th2.processor.core.message.controller
 
 import com.exactpro.th2.common.grpc.AnyMessage
 import com.exactpro.th2.common.grpc.EventID
+import com.exactpro.th2.common.grpc.MessageGroup
 import com.exactpro.th2.dataprovider.lw.grpc.MessageLoadedStatistic
 import com.exactpro.th2.processor.api.IProcessor
 import com.exactpro.th2.processor.core.message.controller.state.GroupState
@@ -41,7 +42,7 @@ internal class GroupController(
     override val isStateComplete: Boolean
         get() = super.isStateComplete && groupState.isStateEmpty
 
-    override fun updateActualState(func: StateUpdater<AnyMessage>.() -> Unit): Boolean = groupState.plus(func)
+    override fun updateActualState(func: StateUpdater<MessageGroup>.() -> Unit): Boolean = groupState.plus(func)
 
     override fun updateExpectedState(loadedStatistic: MessageLoadedStatistic): Boolean = groupState.minus(loadedStatistic)
 }

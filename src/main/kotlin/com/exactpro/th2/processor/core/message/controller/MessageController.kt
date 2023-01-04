@@ -20,6 +20,7 @@ import com.exactpro.th2.common.grpc.AnyMessage
 import com.exactpro.th2.common.grpc.AnyMessage.KindCase.MESSAGE
 import com.exactpro.th2.common.grpc.AnyMessage.KindCase.RAW_MESSAGE
 import com.exactpro.th2.common.grpc.EventID
+import com.exactpro.th2.common.grpc.MessageGroup
 import com.exactpro.th2.common.grpc.MessageGroupBatch
 import com.exactpro.th2.common.utils.message.id
 import com.exactpro.th2.common.utils.message.timestamp
@@ -43,15 +44,18 @@ internal abstract class MessageController(
     override fun actual(batch: MessageGroupBatch) {
         updateActualState {
             for (group in batch.groupsList) {
-                for (anyMessage in group.messagesList) {
-                    runCatching {
-                        updateState(anyMessage)
-
-                        updateLastProcessed(anyMessage.timestamp)
-                        handle(anyMessage)
-                    }.onFailure { e ->
-                        throw CrawlerHandleMessageException(listOf(anyMessage.id), e)
+                runCatching {
+                    updateState(group)
+                    for (anyMessage in group.messagesList) {
+                        runCatching {
+                            updateLastProcessed(anyMessage.timestamp)
+                            handle(anyMessage)
+                        }.onFailure { e ->
+                            throw CrawlerHandleMessageException(listOf(anyMessage.id), e)
+                        }
                     }
+                }.onFailure { e ->
+                    throw CrawlerHandleMessageException(group.messagesList.map { it.id }, e)
                 }
             }
         }.ifTrue(::signal)
@@ -64,7 +68,7 @@ internal abstract class MessageController(
     override fun expected(loadedStatistic: EventLoadedStatistic) {
         throw UnsupportedOperationException()
     }
-    protected abstract fun updateActualState(func: StateUpdater<AnyMessage>.() -> Unit): Boolean
+    protected abstract fun updateActualState(func: StateUpdater<MessageGroup>.() -> Unit): Boolean
     protected abstract fun updateExpectedState(loadedStatistic: MessageLoadedStatistic): Boolean
 
     private fun handle(anyMessage: AnyMessage) {

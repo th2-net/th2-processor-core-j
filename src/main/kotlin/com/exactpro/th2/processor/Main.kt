@@ -143,6 +143,7 @@ class Application(
             messageRouter,
             eventBatcher,
             commonFactory.grpcRouter.getService(DataProviderService::class.java),
+            commonFactory.boxConfiguration.bookName,
             configuration.stateSessionAlias,
             commonFactory.cradleConfiguration.cradleMaxMessageBatchSize
         )

@@ -56,6 +56,7 @@ class DataProviderStateStorage(
     private val messageRouter: MessageRouter<MessageGroupBatch>,
     private val eventBatcher: EventBatcher,
     private val dataProvider: DataProviderService,
+    private val bookName: String,
     private val stateSessionAlias: String,
     maxMessageSize: Long = METADATA_SIZE + MIN_STATE_SIZE
 ) : IStateStorage {
@@ -73,6 +74,9 @@ class DataProviderStateStorage(
         searchDirection = PREVIOUS
         resultCountLimit = Int32Value.of(COUNT_LIMIT)
         addResponseFormats(RAW_MESSAGE_RESPONSE_FORMAT)
+        bookIdBuilder.apply {
+            name = bookName
+        }
         addStreamBuilder().apply {
             name = stateSessionAlias
             direction = Direction.SECOND
@@ -143,6 +147,7 @@ class DataProviderStateStorage(
                     stateTimestamp,
                     stateType,
                     sequenceCounter++,
+                    bookName,
                     stateSessionAlias
                 ))
             }
@@ -151,6 +156,7 @@ class DataProviderStateStorage(
                 stateTimestamp,
                 SINGLE,
                 sequenceCounter++,
+                bookName,
                 stateSessionAlias
             ))
         }
@@ -240,6 +246,7 @@ class DataProviderStateStorage(
             stateTimestamp: Timestamp,
             stateType: StateType,
             sequence: Long,
+            bookName: String,
             sessionAlias: String,
         ): MessageGroupBatch = MessageGroupBatch.newBuilder().apply {
             addGroupsBuilder().apply {
@@ -248,6 +255,7 @@ class DataProviderStateStorage(
                     metadataBuilder.apply {
                         putProperties(METADATA_STATE_TYPE_PROPERTY, stateType.name)
                         idBuilder.apply {
+                            this.bookName = bookName
                             this.timestamp = stateTimestamp
                             this.direction = Direction.SECOND
                             this.sequence = sequence

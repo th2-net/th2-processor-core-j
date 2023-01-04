@@ -86,8 +86,8 @@ internal class TestGroupController {
     }
 
     @ParameterizedTest
-    @MethodSource("allCombinations")
-    fun `put unknown group expected value`(bookToGroup: Map<String, Set<String>>, kind: KindCase) {
+    @MethodSource("bookAndGroupOnly")
+    fun `put unknown group expected value (book and group only)`(bookToGroup: Map<String, Set<String>>, kind: KindCase) {
         val controller = createController(bookToGroup, kind)
         assertFailsWith<IllegalStateException>("Check statistic with unknown group") {
             controller.expected(MessageLoadedStatistic.newBuilder().apply {
@@ -98,6 +98,19 @@ internal class TestGroupController {
             }.build())
         }
         assertFalse(controller.await(1, TimeUnit.NANOSECONDS), "Await uncompleted state")
+    }
+
+    @ParameterizedTest
+    @MethodSource("bookOnly")
+    fun `put unknown group expected value (book only)`(bookToGroup: Map<String, Set<String>>, kind: KindCase) {
+        val controller = createController(bookToGroup, kind)
+        controller.expected(MessageLoadedStatistic.newBuilder().apply {
+            addStatBuilder().apply {
+                bookIdBuilder.apply { name = KNOWN_BOOK }
+                groupBuilder.apply { name = UNKNOWN_GROUP }
+            }
+        }.build())
+        assertTrue(controller.await(1, TimeUnit.NANOSECONDS), "Await completed state")
     }
 
     @ParameterizedTest
@@ -122,7 +135,7 @@ internal class TestGroupController {
 
     @ParameterizedTest
     @MethodSource("bookAndGroupOnly")
-    fun `receive unknown group`(bookToGroup: Map<String, Set<String>>, kind: KindCase) {
+    fun `receive unknown group (book and group only)`(bookToGroup: Map<String, Set<String>>, kind: KindCase) {
         val controller = createController(bookToGroup, kind)
         assertFailsWith<CrawlerHandleMessageException>("Check message with unknown group") {
             controller.actual(MessageGroupBatch.newBuilder().apply {
@@ -137,6 +150,24 @@ internal class TestGroupController {
             { handle(eq(INTERVAL_EVENT_ID), any<Message>()) },
             { handle(eq(INTERVAL_EVENT_ID), any<Event>()) },
         ))
+        assertFalse(controller.await(1, TimeUnit.NANOSECONDS), "Await uncompleted state")
+    }
+
+    @ParameterizedTest
+    @MethodSource("bookOnly")
+    fun `receive unknown group (book only)`(bookToGroup: Map<String, Set<String>>, kind: KindCase) {
+        val controller = createController(bookToGroup, kind)
+        controller.actual(MessageGroupBatch.newBuilder().apply {
+            addGroupsBuilder().apply {
+                message(kind, KNOWN_BOOK, UNKNOWN_GROUP, INTERVAL_START.plus(INTERVAL_HALF_LENGTH))
+            }
+        }.build())
+
+        verify(processor, times(1).description("Message with start interval timestamp"), kind, mapOf(
+            KindCase.MESSAGE to { handle(eq(INTERVAL_EVENT_ID), any<Message>()) },
+            KindCase.RAW_MESSAGE to { handle(eq(INTERVAL_EVENT_ID), any<RawMessage>()) },
+        ))
+        verify(processor, never().description("Final event handler verification")).handle(any(), any<Event>())
         assertFalse(controller.await(1, TimeUnit.NANOSECONDS), "Await uncompleted state")
     }
 
@@ -426,6 +457,12 @@ internal class TestGroupController {
         fun bookAndGroupOnly() = listOf(
             Arguments.of(BOOK_TO_GROUPS, KindCase.MESSAGE),
             Arguments.of(BOOK_TO_GROUPS, KindCase.RAW_MESSAGE),
+        )
+
+        @JvmStatic
+        fun bookOnly() = listOf(
+            Arguments.of(BOOK_ONLY, KindCase.MESSAGE),
+            Arguments.of(BOOK_ONLY, KindCase.RAW_MESSAGE),
         )
     }
 }
