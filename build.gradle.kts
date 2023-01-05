@@ -48,7 +48,7 @@ dependencies {
     implementation("com.exactpro.th2:grpc-common:4.0.0-TH2-4262-reduce-load-book-and-page-3574839736-SNAPSHOT")
     implementation("com.exactpro.th2:common:5.0.0-TH2-4262-reduce-load-book-and-page-3607143172-SNAPSHOT")
     implementation("com.exactpro.th2:common-utils:0.0.1-book-and-page-3607472196-SNAPSHOT")
-    implementation("com.exactpro.th2:grpc-lw-data-provider:2.0.0-th2-3834-refactor-properties-3607479560-SNAPSHOT")
+    implementation("com.exactpro.th2:grpc-lw-data-provider:2.0.0-raw-messages-3847933308-SNAPSHOT")
 
     implementation("com.fasterxml.jackson.core:jackson-core")
     implementation("com.fasterxml.jackson.module:jackson-module-kotlin")

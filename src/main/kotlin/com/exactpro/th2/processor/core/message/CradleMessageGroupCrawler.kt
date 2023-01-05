@@ -71,6 +71,7 @@ internal class CradleMessageGroupCrawler(
             externalQueue = queue
             syncInterval = this@CradleMessageGroupCrawler.syncInterval
             sendRawDirectly = messageKinds.contains(RAW_MESSAGE)
+            rawOnly = messageKinds.size == 1 && messageKinds.contains(RAW_MESSAGE)
 
             addAllMessageGroup(bookGroups)
         }.build()
