@@ -17,6 +17,8 @@
 package com.exactpro.th2.processor.core.message.controller
 
 import com.exactpro.th2.common.grpc.AnyMessage.KindCase
+import com.exactpro.th2.common.grpc.AnyMessage.KindCase.MESSAGE
+import com.exactpro.th2.common.grpc.AnyMessage.KindCase.RAW_MESSAGE
 import com.exactpro.th2.common.grpc.Event
 import com.exactpro.th2.common.grpc.EventID
 import com.exactpro.th2.common.grpc.Message
@@ -170,8 +172,8 @@ internal class TestCradleMessageGroupController {
         }.build())
 
         verify(processor, times(1).description("Message with start interval timestamp"), kinds, mapOf(
-            KindCase.MESSAGE to { handle(eq(INTERVAL_EVENT_ID), any<Message>()) },
-            KindCase.RAW_MESSAGE to { handle(eq(INTERVAL_EVENT_ID), any<RawMessage>()) },
+            MESSAGE to { handle(eq(INTERVAL_EVENT_ID), any<Message>()) },
+            RAW_MESSAGE to { handle(eq(INTERVAL_EVENT_ID), any<RawMessage>()) },
         ))
         verify(processor, never().description("Final event handler verification")).handle(any(), any<Event>())
         assertFalse(controller.await(1, TimeUnit.NANOSECONDS), "Await uncompleted state")
@@ -182,8 +184,8 @@ internal class TestCradleMessageGroupController {
     fun `receive out of time message`(bookToGroup: Map<String, Set<String>>, kinds: Set<KindCase>) {
         val controller = createController(bookToGroup, kinds)
         val kindToCall: Map<KindCase, IProcessor.() -> Unit> = mapOf(
-            KindCase.MESSAGE to { handle(eq(INTERVAL_EVENT_ID), any<Message>()) },
-            KindCase.RAW_MESSAGE to { handle(eq(INTERVAL_EVENT_ID), any<RawMessage>()) },
+            MESSAGE to { handle(eq(INTERVAL_EVENT_ID), any<Message>()) },
+            RAW_MESSAGE to { handle(eq(INTERVAL_EVENT_ID), any<RawMessage>()) },
         )
 
         assertFailsWith<CrawlerHandleMessageException>("Check message before interval start") {
@@ -227,8 +229,8 @@ internal class TestCradleMessageGroupController {
             kinds.forEach { kind ->
                 addGroupsBuilder().apply {
                     when (kind) {
-                        KindCase.MESSAGE -> this += minMessage
-                        KindCase.RAW_MESSAGE -> this += minRawMessage
+                        MESSAGE -> this += minMessage
+                        RAW_MESSAGE -> this += minRawMessage
                         else -> error("Unsupported kind $kind")
                     }
                 }
@@ -236,8 +238,8 @@ internal class TestCradleMessageGroupController {
         }.build())
 
         verify(processor, times(1).description("Message with start interval timestamp"), kinds, mapOf(
-            KindCase.MESSAGE to { handle(eq(INTERVAL_EVENT_ID), eq(minMessage)) },
-            KindCase.RAW_MESSAGE to { handle(eq(INTERVAL_EVENT_ID), eq(minRawMessage)) },
+            MESSAGE to { handle(eq(INTERVAL_EVENT_ID), eq(minMessage)) },
+            RAW_MESSAGE to { handle(eq(INTERVAL_EVENT_ID), eq(minRawMessage)) },
         ))
 
         val intermediateMessage = message(KNOWN_BOOK, KNOWN_GROUP, INTERVAL_START.plus(INTERVAL_HALF_LENGTH))
@@ -246,16 +248,16 @@ internal class TestCradleMessageGroupController {
             kinds.forEach { kind ->
                 addGroupsBuilder().apply {
                     when (kind) {
-                        KindCase.MESSAGE -> this += intermediateMessage
-                        KindCase.RAW_MESSAGE -> this += intermediateRawMessage
+                        MESSAGE -> this += intermediateMessage
+                        RAW_MESSAGE -> this += intermediateRawMessage
                         else -> error("Unsupported kind $kind")
                     }
                 }
             }
         }.build())
         verify(processor, times(1).description("Message with half interval timestamp"), kinds, mapOf(
-            KindCase.MESSAGE to { handle(eq(INTERVAL_EVENT_ID), eq(intermediateMessage)) },
-            KindCase.RAW_MESSAGE to { handle(eq(INTERVAL_EVENT_ID), eq(intermediateRawMessage)) },
+            MESSAGE to { handle(eq(INTERVAL_EVENT_ID), eq(intermediateMessage)) },
+            RAW_MESSAGE to { handle(eq(INTERVAL_EVENT_ID), eq(intermediateRawMessage)) },
         ))
 
         val maxMessage = message(KNOWN_BOOK, KNOWN_GROUP, INTERVAL_END.minusNanos(1))
@@ -264,16 +266,16 @@ internal class TestCradleMessageGroupController {
             kinds.forEach { kind ->
                 addGroupsBuilder().apply {
                     when (kind) {
-                        KindCase.MESSAGE -> this += maxMessage
-                        KindCase.RAW_MESSAGE -> this += maxRawMessage
+                        MESSAGE -> this += maxMessage
+                        RAW_MESSAGE -> this += maxRawMessage
                         else -> error("Unsupported kind $kind")
                     }
                 }
             }
         }.build())
         verify(processor, times(1).description("Message the nearest to the end interval timestamp"), kinds, mapOf(
-            KindCase.MESSAGE to { handle(eq(INTERVAL_EVENT_ID), eq(maxMessage)) },
-            KindCase.RAW_MESSAGE to { handle(eq(INTERVAL_EVENT_ID), eq(maxRawMessage)) },
+            MESSAGE to { handle(eq(INTERVAL_EVENT_ID), eq(maxMessage)) },
+            RAW_MESSAGE to { handle(eq(INTERVAL_EVENT_ID), eq(maxRawMessage)) },
         ))
 
         assertFalse(controller.await(1, TimeUnit.NANOSECONDS), "Await not empty state")
@@ -286,9 +288,9 @@ internal class TestCradleMessageGroupController {
         }.build())
 
         verify(processor, never()).handle(eq(INTERVAL_EVENT_ID), any<Event>())
-        verify(processor, never(), kinds, mapOf(
-            KindCase.MESSAGE to { handle(eq(INTERVAL_EVENT_ID), any<RawMessage>()) },
-            KindCase.RAW_MESSAGE to { handle(eq(INTERVAL_EVENT_ID), any<Message>()) },
+        verify(processor, never(), MESSAGE_KINDS.minus(kinds), mapOf(
+            MESSAGE to { handle(eq(INTERVAL_EVENT_ID), any<Message>()) },
+            RAW_MESSAGE to { handle(eq(INTERVAL_EVENT_ID), any<RawMessage>()) },
         ))
 
         assertTrue(controller.await(1, TimeUnit.NANOSECONDS), "Await empty state")
@@ -366,8 +368,8 @@ internal class TestCradleMessageGroupController {
         }
 
         verify(processor, times(cycles).description("Handled messages"), kinds, mapOf(
-            KindCase.MESSAGE to { handle(eq(INTERVAL_EVENT_ID), any<Message>()) },
-            KindCase.RAW_MESSAGE to { handle(eq(INTERVAL_EVENT_ID), any<RawMessage>()) },
+            MESSAGE to { handle(eq(INTERVAL_EVENT_ID), any<Message>()) },
+            RAW_MESSAGE to { handle(eq(INTERVAL_EVENT_ID), any<RawMessage>()) },
         ))
 
         repeat(cycles) { cycle ->
@@ -382,9 +384,9 @@ internal class TestCradleMessageGroupController {
         }
 
         verify(processor, never()).handle(eq(INTERVAL_EVENT_ID), any<Event>())
-        verify(processor, never(), kinds, mapOf(
-            KindCase.MESSAGE to { handle(eq(INTERVAL_EVENT_ID), any<RawMessage>()) },
-            KindCase.RAW_MESSAGE to { handle(eq(INTERVAL_EVENT_ID), any<Message>()) },
+        verify(processor, never(), MESSAGE_KINDS.minus(kinds), mapOf(
+            MESSAGE to { handle(eq(INTERVAL_EVENT_ID), any<Message>()) },
+            RAW_MESSAGE to { handle(eq(INTERVAL_EVENT_ID), any<RawMessage>()) },
         ))
         assertTrue(controller.await(1, TimeUnit.NANOSECONDS), "Await empty state")
     }
@@ -399,8 +401,8 @@ internal class TestCradleMessageGroupController {
 
     private fun MessageGroup.Builder.message(kind: KindCase, book: String, group: String, timestamp: Instant) {
         when (kind) {
-            KindCase.MESSAGE -> this += message(book, group, timestamp)
-            KindCase.RAW_MESSAGE -> this += rawMessage(book, group, timestamp)
+            MESSAGE -> this += message(book, group, timestamp)
+            RAW_MESSAGE -> this += rawMessage(book, group, timestamp)
             else -> error("Unsupported kind $kind")
         }
     }
@@ -439,6 +441,7 @@ internal class TestCradleMessageGroupController {
         private val INTERVAL_START = Instant.now()
         private val INTERVAL_END = INTERVAL_START.plus(INTERVAL_LENGTH)
         private val INTERVAL_EVENT_ID = EventID.getDefaultInstance()
+        private val MESSAGE_KINDS = setOf(MESSAGE, RAW_MESSAGE)
 
         private const val SESSION_ALIAS = "known-session-alias"
         private const val KNOWN_BOOK = "known-book"
@@ -464,28 +467,32 @@ internal class TestCradleMessageGroupController {
         }
         @JvmStatic
         fun allCombinations() = listOf(
-            Arguments.of(BOOK_ONLY, setOf(KindCase.MESSAGE)),
-            Arguments.of(BOOK_ONLY, setOf(KindCase.RAW_MESSAGE)),
-            Arguments.of(BOOK_TO_GROUPS, setOf(KindCase.MESSAGE)),
-            Arguments.of(BOOK_TO_GROUPS, setOf(KindCase.RAW_MESSAGE)),
+            Arguments.of(BOOK_ONLY, setOf(MESSAGE)),
+            Arguments.of(BOOK_ONLY, setOf(RAW_MESSAGE)),
+            Arguments.of(BOOK_ONLY, MESSAGE_KINDS),
+            Arguments.of(BOOK_TO_GROUPS, setOf(MESSAGE)),
+            Arguments.of(BOOK_TO_GROUPS, setOf(RAW_MESSAGE)),
+            Arguments.of(BOOK_TO_GROUPS, MESSAGE_KINDS),
         )
 
         @JvmStatic
         fun parsedOnly() = listOf(
-            Arguments.of(BOOK_ONLY, setOf(KindCase.MESSAGE)),
-            Arguments.of(BOOK_TO_GROUPS, setOf(KindCase.MESSAGE)),
+            Arguments.of(BOOK_ONLY, setOf(MESSAGE)),
+            Arguments.of(BOOK_TO_GROUPS, setOf(MESSAGE)),
         )
 
         @JvmStatic
         fun bookAndGroupOnly() = listOf(
-            Arguments.of(BOOK_TO_GROUPS, setOf(KindCase.MESSAGE)),
-            Arguments.of(BOOK_TO_GROUPS, setOf(KindCase.RAW_MESSAGE)),
+            Arguments.of(BOOK_TO_GROUPS, setOf(MESSAGE)),
+            Arguments.of(BOOK_TO_GROUPS, setOf(RAW_MESSAGE)),
+            Arguments.of(BOOK_TO_GROUPS, MESSAGE_KINDS),
         )
 
         @JvmStatic
         fun bookOnly() = listOf(
-            Arguments.of(BOOK_ONLY, setOf(KindCase.MESSAGE)),
-            Arguments.of(BOOK_ONLY, setOf(KindCase.RAW_MESSAGE)),
+            Arguments.of(BOOK_ONLY, setOf(MESSAGE)),
+            Arguments.of(BOOK_ONLY, setOf(RAW_MESSAGE)),
+            Arguments.of(BOOK_ONLY, MESSAGE_KINDS),
         )
     }
 }
