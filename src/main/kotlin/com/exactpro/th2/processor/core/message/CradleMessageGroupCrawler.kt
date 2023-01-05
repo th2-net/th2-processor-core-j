@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Exactpro (Exactpro Systems Limited)
+ * Copyright 2022-2023 Exactpro (Exactpro Systems Limited)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,6 +19,7 @@ package com.exactpro.th2.processor.core.message
 import com.exactpro.th2.common.event.Event
 import com.exactpro.th2.common.event.bean.IRow
 import com.exactpro.th2.common.event.bean.Table
+import com.exactpro.th2.common.grpc.AnyMessage.KindCase.RAW_MESSAGE
 import com.exactpro.th2.common.grpc.EventID
 import com.exactpro.th2.common.grpc.MessageGroupBatch
 import com.exactpro.th2.common.message.toJson
@@ -28,11 +29,11 @@ import com.exactpro.th2.dataprovider.lw.grpc.MessageLoadedStatistic
 import com.exactpro.th2.dataprovider.lw.grpc.QueueDataProviderService
 import com.exactpro.th2.processor.core.Context
 import com.exactpro.th2.processor.core.Crawler
-import com.exactpro.th2.processor.core.message.controller.GroupController
+import com.exactpro.th2.processor.core.message.controller.CradleMessageGroupController
 import com.google.protobuf.Timestamp
 import mu.KotlinLogging
 
-internal class GroupMessageCrawler(
+internal class CradleMessageGroupCrawler(
     context: Context,
 ) : Crawler<MessageGroupBatch>(
     context.eventBatcher,
@@ -43,7 +44,7 @@ internal class GroupMessageCrawler(
 ) {
     private val dataProvider: QueueDataProviderService = context.dataProvider
 
-    private val messageKind = requireNotNull(context.configuration.messages).messageKind
+    private val messageKinds = requireNotNull(context.configuration.messages).messageKinds
 
     private val bookToGroups = requireNotNull(
         requireNotNull(context.configuration.messages).bookToGroups
@@ -62,13 +63,14 @@ internal class GroupMessageCrawler(
         }.build()
     }
     override fun process(from: Timestamp, to: Timestamp, intervalEventId: EventID) {
-        controller = GroupController(processor, intervalEventId, from, to, messageKind, bookToGroups)
+        controller = CradleMessageGroupController(processor, intervalEventId, from, to, messageKinds, bookToGroups)
 
         val request = MessageGroupsQueueSearchRequest.newBuilder().apply {
             startTimestamp = from
             endTimestamp = to
             externalQueue = queue
-            syncInterval = this@GroupMessageCrawler.syncInterval
+            syncInterval = this@CradleMessageGroupCrawler.syncInterval
+            sendRawDirectly = messageKinds.contains(RAW_MESSAGE)
 
             addAllMessageGroup(bookGroups)
         }.build()

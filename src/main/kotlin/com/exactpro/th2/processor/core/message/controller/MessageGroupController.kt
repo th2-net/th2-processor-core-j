@@ -1,5 +1,5 @@
 /*
- *  Copyright 2022 Exactpro (Exactpro Systems Limited)
+ *  Copyright 2022-2023 Exactpro (Exactpro Systems Limited)
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -34,10 +34,9 @@ import com.exactpro.th2.processor.utility.ifTrue
 import javax.annotation.concurrent.ThreadSafe
 
 @ThreadSafe
-internal abstract class MessageController(
+internal abstract class MessageGroupController(
     private val processor: IProcessor,
-    intervalEventId: EventID,
-    protected val kind: AnyMessage.KindCase
+    intervalEventId: EventID
 ) : Controller<MessageGroupBatch>(
     intervalEventId
 ) {
@@ -72,10 +71,10 @@ internal abstract class MessageController(
     protected abstract fun updateExpectedState(loadedStatistic: MessageLoadedStatistic): Boolean
 
     private fun handle(anyMessage: AnyMessage) {
-        when (kind) {
+        when (anyMessage.kindCase) {
             MESSAGE -> processor.handle(intervalEventId, anyMessage.message)
             RAW_MESSAGE -> processor.handle(intervalEventId, anyMessage.rawMessage)
-            else -> error("Unsupported message kind: $kind")
+            else -> error("Unsupported message kind: ${anyMessage.kindCase}")
         }
     }
 }

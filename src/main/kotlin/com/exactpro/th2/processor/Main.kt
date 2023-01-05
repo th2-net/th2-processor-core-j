@@ -1,5 +1,5 @@
 /*
- *  Copyright 2022 Exactpro (Exactpro Systems Limited)
+ *  Copyright 2022-2023 Exactpro (Exactpro Systems Limited)
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -34,7 +34,7 @@ import com.exactpro.th2.processor.api.ProcessorContext
 import com.exactpro.th2.processor.core.Context
 import com.exactpro.th2.processor.core.configuration.Configuration
 import com.exactpro.th2.processor.core.event.EventCrawler
-import com.exactpro.th2.processor.core.message.GroupMessageCrawler
+import com.exactpro.th2.processor.core.message.CradleMessageGroupCrawler
 import com.exactpro.th2.processor.core.state.CrawlerState
 import com.exactpro.th2.processor.core.state.DataProviderStateStorage
 import com.exactpro.th2.processor.core.state.IStateStorage
@@ -198,7 +198,7 @@ class Application(
                 )
 
                 when {
-                    configuration.messages != null -> GroupMessageCrawler(context)
+                    configuration.messages != null -> CradleMessageGroupCrawler(context)
                     configuration.events != null -> EventCrawler(context)
                     else -> error(
                         "Neither of `messages`, `events` options are filled. " +

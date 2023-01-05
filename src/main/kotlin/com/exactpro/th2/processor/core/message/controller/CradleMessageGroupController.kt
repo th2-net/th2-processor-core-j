@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Exactpro (Exactpro Systems Limited)
+ * Copyright 2022-2023 Exactpro (Exactpro Systems Limited)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,28 +21,27 @@ import com.exactpro.th2.common.grpc.EventID
 import com.exactpro.th2.common.grpc.MessageGroup
 import com.exactpro.th2.dataprovider.lw.grpc.MessageLoadedStatistic
 import com.exactpro.th2.processor.api.IProcessor
-import com.exactpro.th2.processor.core.message.controller.state.GroupState
+import com.exactpro.th2.processor.core.message.controller.state.CradleMessageGroupState
 import com.exactpro.th2.processor.core.state.StateUpdater
 import com.google.protobuf.Timestamp
 
-internal class GroupController(
+internal class CradleMessageGroupController(
     processor: IProcessor,
     intervalEventId: EventID,
     startTime: Timestamp,
     endTime: Timestamp,
-    kind: AnyMessage.KindCase,
+    kinds: Set<AnyMessage.KindCase>,
     bookToGroups: Map<String, Set<String>>
-) : MessageController(
+) : MessageGroupController(
     processor,
-    intervalEventId,
-    kind
+    intervalEventId
 ) {
-    private val groupState = GroupState(startTime, endTime, kind, bookToGroups)
+    private val cradleMessageGroupState = CradleMessageGroupState(startTime, endTime, kinds, bookToGroups)
 
     override val isStateComplete: Boolean
-        get() = super.isStateComplete && groupState.isStateEmpty
+        get() = super.isStateComplete && cradleMessageGroupState.isStateEmpty
 
-    override fun updateActualState(func: StateUpdater<MessageGroup>.() -> Unit): Boolean = groupState.plus(func)
+    override fun updateActualState(func: StateUpdater<MessageGroup>.() -> Unit): Boolean = cradleMessageGroupState.plus(func)
 
-    override fun updateExpectedState(loadedStatistic: MessageLoadedStatistic): Boolean = groupState.minus(loadedStatistic)
+    override fun updateExpectedState(loadedStatistic: MessageLoadedStatistic): Boolean = cradleMessageGroupState.minus(loadedStatistic)
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Exactpro (Exactpro Systems Limited)
+ * Copyright 2022-2023 Exactpro (Exactpro Systems Limited)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -34,10 +34,10 @@ import mu.KotlinLogging
 import java.util.concurrent.ConcurrentHashMap
 
 //TODO: Extract common part
-internal class GroupState(
+internal class CradleMessageGroupState(
     private val startTime: Timestamp,
     private val endTime: Timestamp,
-    private val kind: AnyMessage.KindCase,
+    private val kinds: Set<AnyMessage.KindCase>,
     private val bookToGroups: Map<String, Set<String>>
 ) {
     private val groupToNumber = ConcurrentHashMap<StateKey, Long>()
@@ -74,7 +74,7 @@ internal class GroupState(
         var needCheck = false
         loadedStatistic.statList.forEach { groupStat ->
             groupToNumber.compute(groupStat.toStateKey()) { _, previous ->
-                when (val result = (previous ?: 0L) - groupStat.count) {
+                when (val result = (previous ?: 0L) - groupStat.count * kinds.size) {
                     0L -> {
                         needCheck = true
                         null
@@ -97,11 +97,16 @@ internal class GroupState(
                     "actual ${Timestamps.toString(timestamp)}, " +
                     "expected [${Timestamps.toString(startTime)} - ${Timestamps.toString(endTime)})"
         }
+        val kindSet = hashSetOf<AnyMessage.KindCase>()
         messagesList.forEach { anyMessage ->
-            check(anyMessage.kindCase == kind) {
+            check(kinds.contains(anyMessage.kindCase)) {
                 "Incorrect message kind ${anyMessage.logId}, " +
-                        "actual ${anyMessage.kindCase}, expected $kind"
+                        "actual ${anyMessage.kindCase}, expected one of $kinds"
             }
+            kindSet.add(anyMessage.kindCase)
+        }
+        check(kindSet.size == 1) {
+            "The ${firstMessage.logId} message group has messages with $kindSet kinds, expected only one kind"
         }
         return this
     }
