@@ -63,6 +63,28 @@ internal class TestCradleMessageGroupController {
         }
     }
     @ParameterizedTest
+    @MethodSource("parsedOnly")
+    fun `put raw message actual value`(bookToGroup: Map<String, Set<String>>, kinds: Set<KindCase>) {
+        assertFailsWith<CrawlerHandleMessageException>("Put incorrect message kind") {
+            createController(bookToGroup, kinds).actual(MessageGroupBatch.newBuilder().apply {
+                addGroupsBuilder().apply {
+                    message(RAW_MESSAGE, KNOWN_BOOK, KNOWN_BOOK, INTERVAL_START.plus(INTERVAL_HALF_LENGTH))
+                }
+            }.build())
+        }
+    }
+    @ParameterizedTest
+    @MethodSource("rawOnly")
+    fun `put parsed message actual value`(bookToGroup: Map<String, Set<String>>, kinds: Set<KindCase>) {
+        assertFailsWith<CrawlerHandleMessageException>("Put incorrect message kind") {
+            createController(bookToGroup, kinds).actual(MessageGroupBatch.newBuilder().apply {
+                addGroupsBuilder().apply {
+                    message(MESSAGE, KNOWN_BOOK, KNOWN_BOOK, INTERVAL_START.plus(INTERVAL_HALF_LENGTH))
+                }
+            }.build())
+        }
+    }
+    @ParameterizedTest
     @MethodSource("allCombinations")
     fun `put empty expected value`(bookToGroup: Map<String, Set<String>>, kinds: Set<KindCase>) {
         val controller = createController(bookToGroup, kinds)
@@ -211,6 +233,28 @@ internal class TestCradleMessageGroupController {
         verify(processor, never().description("Message with end interval timestamp"), kinds, kindToCall)
 
         verify(processor, never(), listOf(
+            { handle(eq(INTERVAL_EVENT_ID), any<RawMessage>()) },
+            { handle(eq(INTERVAL_EVENT_ID), any<Message>()) },
+            { handle(eq(INTERVAL_EVENT_ID), any<Event>()) },
+        ))
+        assertFalse(controller.await(1, TimeUnit.NANOSECONDS), "Await uncompleted state")
+    }
+
+    @ParameterizedTest
+    @MethodSource("allKindsOnly")
+    fun `receive uncompleted decoding message group`(bookToGroup: Map<String, Set<String>>, kinds: Set<KindCase>) {
+        val controller = createController(bookToGroup, kinds)
+
+        assertFailsWith<CrawlerHandleMessageException>("Check uncompleted decoding message group") {
+            controller.actual(MessageGroupBatch.newBuilder().apply {
+                addGroupsBuilder().apply {
+                    message(RAW_MESSAGE, KNOWN_BOOK, UNKNOWN_GROUP, INTERVAL_START.plus(INTERVAL_HALF_LENGTH), 1L)
+                    message(MESSAGE, KNOWN_BOOK, UNKNOWN_GROUP, INTERVAL_START.plus(INTERVAL_HALF_LENGTH), 1L)
+                }
+            }.build())
+        }
+
+        verify(processor, never().description("Final handler verification"), listOf(
             { handle(eq(INTERVAL_EVENT_ID), any<RawMessage>()) },
             { handle(eq(INTERVAL_EVENT_ID), any<Message>()) },
             { handle(eq(INTERVAL_EVENT_ID), any<Event>()) },
@@ -391,6 +435,60 @@ internal class TestCradleMessageGroupController {
         assertTrue(controller.await(1, TimeUnit.NANOSECONDS), "Await empty state")
     }
 
+    @ParameterizedTest
+    @MethodSource("allKindsOnly")
+    fun `receive both kind of messages`(bookToGroup: Map<String, Set<String>>, kinds: Set<KindCase>) {
+        val controller = createController(bookToGroup, kinds)
+        val raw = rawMessage(KNOWN_BOOK, KNOWN_GROUP, INTERVAL_START, 1)
+        val builder = message(KNOWN_BOOK, KNOWN_GROUP, INTERVAL_START).toBuilder()
+        val first = builder.apply {
+            metadataBuilder.apply {
+                idBuilder.apply {
+                    sequence = 1
+                    addAllSubsequence(listOf(1))
+                }
+            }
+        }.build()
+        val second = builder.apply {
+            metadataBuilder.apply {
+                idBuilder.apply {
+                    sequence = 1
+                    addAllSubsequence(listOf(2))
+                }
+            }
+        }.build()
+
+        controller.actual(MessageGroupBatch.newBuilder().apply {
+            addGroupsBuilder().apply {
+                this += first
+                this += second
+            }
+            addGroupsBuilder().apply {
+                this += raw
+            }
+        }.build())
+
+        verify(processor, times(1).description("First message with start interval timestamp")).handle(eq(INTERVAL_EVENT_ID), eq(first))
+        verify(processor, times(1).description("Second message with start interval timestamp")).handle(eq(INTERVAL_EVENT_ID), eq(second))
+        verify(processor, times(1).description("Raw message with start interval timestamp")).handle(eq(INTERVAL_EVENT_ID), eq(raw))
+        verify(processor, never().description("Events with start interval timestamp")).handle(eq(INTERVAL_EVENT_ID), any<Event>())
+
+        assertFalse(controller.await(1, TimeUnit.NANOSECONDS), "Await uncompleted state")
+        controller.expected(MessageLoadedStatistic.newBuilder().apply {
+            addStatBuilder().apply {
+                bookIdBuilder.apply { name = KNOWN_BOOK }
+                groupBuilder.apply { name = KNOWN_GROUP }
+                count = 1
+            }
+        }.build())
+
+        verify(processor, times(2).description("Final message handler verification")).handle(any(), any<Message>())
+        verify(processor, times(1).description("Final raw message handler verification")).handle(any(), any<RawMessage>())
+        verify(processor, never().description("Final event handler verification")).handle(any(), any<Event>())
+
+        assertTrue(controller.await(1, TimeUnit.NANOSECONDS), "Await completed state")
+    }
+
     private fun createController(bookToGroup: Map<String, Set<String>>, kinds: Set<KindCase>) = CradleMessageGroupController(
         processor,
         INTERVAL_EVENT_ID,
@@ -399,36 +497,47 @@ internal class TestCradleMessageGroupController {
         kinds,
         bookToGroup)
 
-    private fun MessageGroup.Builder.message(kind: KindCase, book: String, group: String, timestamp: Instant) {
+    private fun MessageGroup.Builder.message(
+        kind: KindCase,
+        book: String,
+        group: String,
+        timestamp: Instant,
+        sequence: Long = SEQUENCE_COUNTER.incrementAndGet()
+    ) {
         when (kind) {
-            MESSAGE -> this += message(book, group, timestamp)
-            RAW_MESSAGE -> this += rawMessage(book, group, timestamp)
+            MESSAGE -> this += message(book, group, timestamp, sequence)
+            RAW_MESSAGE -> this += rawMessage(book, group, timestamp, sequence)
             else -> error("Unsupported kind $kind")
         }
     }
-    private fun message(book: String, group: String, timestamp: Instant): Message = Message.newBuilder().apply {
+    private fun message(
+        book: String,
+        group: String,
+        timestamp: Instant,
+        sequence: Long = SEQUENCE_COUNTER.incrementAndGet()
+    ): Message = Message.newBuilder().apply {
         metadataBuilder.apply {
             idBuilder.apply {
                 bookName = book
                 this.timestamp = timestamp.toTimestamp()
+                this.sequence = sequence
                 connectionIdBuilder.apply {
                     sessionGroup = group
                     sessionAlias = SESSION_ALIAS
-                    sequence = SEQUENCE_COUNTER.incrementAndGet()
                 }
             }
         }
     }.build()
 
-    private fun rawMessage(book: String, group: String, timestamp: Instant): RawMessage = RawMessage.newBuilder().apply {
+    private fun rawMessage(book: String, group: String, timestamp: Instant, sequence: Long = SEQUENCE_COUNTER.incrementAndGet()): RawMessage = RawMessage.newBuilder().apply {
         metadataBuilder.apply {
             idBuilder.apply {
                 bookName = book
                 this.timestamp = timestamp.toTimestamp()
+                this.sequence = sequence
                 connectionIdBuilder.apply {
                     sessionGroup = group
                     sessionAlias = SESSION_ALIAS
-                    sequence = SEQUENCE_COUNTER.incrementAndGet()
                 }
             }
         }
@@ -456,7 +565,7 @@ internal class TestCradleMessageGroupController {
                 verify(mock, mode, kind, calls)
             }
         }
-        fun <T> verify(mock: T, mode: VerificationMode, kind: KindCase, calls: Map<KindCase, T.() -> Any>) {
+        private fun <T> verify(mock: T, mode: VerificationMode, kind: KindCase, calls: Map<KindCase, T.() -> Any>) {
             val call = requireNotNull(calls[kind])
             verify(mock, mode).call()
         }
@@ -465,6 +574,11 @@ internal class TestCradleMessageGroupController {
                 verify(mock, mode).call()
             }
         }
+        @JvmStatic
+        fun allKindsOnly() = listOf(
+            Arguments.of(BOOK_ONLY, MESSAGE_KINDS),
+            Arguments.of(BOOK_TO_GROUPS, MESSAGE_KINDS),
+        )
         @JvmStatic
         fun allCombinations() = listOf(
             Arguments.of(BOOK_ONLY, setOf(MESSAGE)),
@@ -479,6 +593,12 @@ internal class TestCradleMessageGroupController {
         fun parsedOnly() = listOf(
             Arguments.of(BOOK_ONLY, setOf(MESSAGE)),
             Arguments.of(BOOK_TO_GROUPS, setOf(MESSAGE)),
+        )
+
+        @JvmStatic
+        fun rawOnly() = listOf(
+            Arguments.of(BOOK_ONLY, setOf(RAW_MESSAGE)),
+            Arguments.of(BOOK_TO_GROUPS, setOf(RAW_MESSAGE)),
         )
 
         @JvmStatic
