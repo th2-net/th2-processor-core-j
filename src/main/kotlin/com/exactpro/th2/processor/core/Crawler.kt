@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Exactpro (Exactpro Systems Limited)
+ * Copyright 2022-2023 Exactpro (Exactpro Systems Limited)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -103,7 +103,6 @@ abstract class Crawler<T : Message>(
                 .also(eventBatcher::onEvent)
         )
     }
-    fun serializeState(): ByteArray? = processor.serializeState()
 
     override fun close() {
         monitor.unsubscribe()

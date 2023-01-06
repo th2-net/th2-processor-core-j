@@ -1,5 +1,5 @@
 /*
- *  Copyright 2022 Exactpro (Exactpro Systems Limited)
+ *  Copyright 2022-2023 Exactpro (Exactpro Systems Limited)
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -25,13 +25,13 @@ import javax.annotation.concurrent.ThreadSafe
 @ThreadSafe
 interface IProcessor : AutoCloseable {
     fun handle(intervalEventId: EventID, message: Message) {
-        throw UnsupportedOperationException("Processor $javaClass can't able to process ${Message::javaClass}")
+        throw UnsupportedOperationException("Processor $javaClass can't able to process ${Message::class.java.simpleName}")
     }
     fun handle(intervalEventId: EventID, message: RawMessage) {
-        throw UnsupportedOperationException("Processor $javaClass can't able to process ${RawMessage::javaClass}")
+        throw UnsupportedOperationException("Processor $javaClass can't able to process ${RawMessage::class.java.simpleName}")
     }
     fun handle(intervalEventId: EventID, event: Event) {
-        throw UnsupportedOperationException("Processor $javaClass can't able to process ${Event::javaClass}")
+        throw UnsupportedOperationException("Processor $javaClass can't able to process ${Event::class.java.simpleName}")
     }
     fun serializeState(): ByteArray? = null
     override fun close() { }

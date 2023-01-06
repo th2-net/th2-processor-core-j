@@ -1,4 +1,4 @@
-# Description of th2-processor-core-j (0.0.1)
+# Description of th2-processor-core-j (0.0.2)
 
 This is a common processor library which takes care of some features like requesting messages/events from a lw-data-provider (LDP), subscribing to message queues, verify incoming streams vs response from LDP, loading processor settings, etc.
 
@@ -40,14 +40,45 @@ The default value is **10**.
 Allowed values are described [here](https://docs.oracle.com/en/java/javase/11/docs/api/java.base/java/time/temporal/ChronoUnit.html) in **Enum Constants** block.
 The default value is **SECONDS**.
 
-Processor can work of in one of two type of data: events, messages. The current mode depends on what of property are filled:
+Processor can work with data: events, messages, raw message at the same time. The processor requests configured data streams parallel for each interval. Users can configured parameters for required data streams via properties:
 
 **messages** - processor will work on messages when this option is filled
 
-**messageKind: _MESSAGE_** - the type of messages will be requested from lw-data-provider. The option supports the next values: MESSAGE, RAW_MESSAGE
-The default value is **MESSAGE**.
+**messageKinds: _[MESSAGE]_** - the types of messages will be requested from lw-data-provider. The option supports the next values: MESSAGE, RAW_MESSAGE
+The default value is **[MESSAGE]**.
 
 **bookToGroups** - the combination of each **book** and **group** will be requested from lw-data-provider. This map must not be empty, also, each **group** collection can be empty or filled via not blank values. **Required parameter** 
+
+For example:
+
+```yaml
+apiVersion: th2.exactpro.com/v1
+kind: Th2Box
+metadata:
+  name: my-processor
+spec:
+  custom-config:
+    messages:
+      messageKinds: 
+        - MESSAGE
+      bookToGroups:
+        book1:
+          - group1
+          - group2
+        book2:
+          - group1
+          - group2
+    stateSessionAlias: my-processor-state
+    enableStoreState: false
+      
+    from: 2021-06-16T12:00:00.00Z
+    to: 2021-06-17T14:00:00.00Z
+      
+    intervalLength: PT10M
+    syncInterval: PT10M
+    awaitTimeout: 10
+    awaitUnit: SECONDS
+```
 
 **events** - processor will work on events when this option is filled
 
@@ -62,15 +93,14 @@ metadata:
   name: my-processor
 spec:
   custom-config:
-    messages:
-      messageKind: MESSAGE
-      bookToGroups:
-        book1:
-          - group1
-          - group2
-        book2:
-          - group1
-          - group2
+    events:
+      bookToScope:
+        book3:
+          - scope1
+          - scope2
+        book4:
+          - scope1
+          - scope2
     stateSessionAlias: my-processor-state
     enableStoreState: false
       
@@ -172,7 +202,9 @@ spec:
     awaitUnit: SECONDS
     
     messages:
-      messageKind: MESSAGE
+      messageKinds: 
+        - MESSAGE
+        - RAW_MESSAGES
       bookToGroups:
         book1:
           - group1
@@ -180,6 +212,14 @@ spec:
         book2:
           - group1
           - group2
+    events:
+      bookToScope:
+        book3:
+          - scope1
+          - scope2
+        book4:
+          - scope1
+          - scope2
     
     processorSettings:
       cacheCapacity: 100

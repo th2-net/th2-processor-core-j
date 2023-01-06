@@ -5,6 +5,7 @@ import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
 plugins {
     kotlin("jvm") version "1.6.21"
+    kotlin("kapt") version "1.6.21"
     `java-library`
     `maven-publish`
     signing
@@ -55,6 +56,9 @@ dependencies {
     implementation("com.fasterxml.jackson.dataformat:jackson-dataformat-cbor:2.14.0")
     implementation("com.fasterxml.jackson.dataformat:jackson-dataformat-yaml")
     implementation("com.fasterxml.jackson.datatype:jackson-datatype-jsr310")
+
+    testCompileOnly("com.google.auto.service:auto-service:1.0.1")
+    kaptTest("com.google.auto.service:auto-service:1.0.1")
 
     testImplementation("org.jetbrains.kotlin:kotlin-test-junit5")
     testImplementation("org.mockito.kotlin:mockito-kotlin:4.0.0")

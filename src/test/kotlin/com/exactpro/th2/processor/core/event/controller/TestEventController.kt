@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Exactpro (Exactpro Systems Limited)
+ * Copyright 2022-2023 Exactpro (Exactpro Systems Limited)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,6 +24,10 @@ import com.exactpro.th2.common.grpc.RawMessage
 import com.exactpro.th2.common.utils.message.toTimestamp
 import com.exactpro.th2.dataprovider.lw.grpc.EventLoadedStatistic
 import com.exactpro.th2.dataprovider.lw.grpc.MessageLoadedStatistic
+import com.exactpro.th2.processor.KNOWN_BOOK
+import com.exactpro.th2.processor.KNOWN_SCOPE
+import com.exactpro.th2.processor.UNKNOWN_BOOK
+import com.exactpro.th2.processor.UNKNOWN_SCOPE
 import com.exactpro.th2.processor.api.IProcessor
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertDoesNotThrow
@@ -268,10 +272,6 @@ internal class TestEventController {
         private val INTERVAL_END = INTERVAL_START.plus(INTERVAL_LENGTH)
         private val INTERVAL_EVENT_ID = EventID.getDefaultInstance()
 
-        private const val KNOWN_BOOK = "known-book"
-        private const val UNKNOWN_BOOK = "unknown-book"
-        private const val KNOWN_SCOPE = "known-scope"
-        private const val UNKNOWN_SCOPE = "unknown-scope"
         private val BOOK_TO_SCOPES = mapOf(KNOWN_BOOK to setOf(KNOWN_SCOPE))
         private val BOOK_ONLY = mapOf(KNOWN_BOOK to emptySet<String>())
 
