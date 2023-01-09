@@ -17,15 +17,17 @@
 package com.exactpro.th2.processor
 
 import com.exactpro.th2.common.event.Event
-import com.exactpro.th2.common.grpc.Direction
 import com.exactpro.th2.common.grpc.EventBatch
 import com.exactpro.th2.common.grpc.EventID
+import com.exactpro.th2.common.grpc.MessageGroup
+import com.exactpro.th2.common.grpc.MessageGroupBatch
+import com.exactpro.th2.common.grpc.RawMessage
 import com.exactpro.th2.common.metrics.registerLiveness
 import com.exactpro.th2.common.metrics.registerReadiness
 import com.exactpro.th2.common.schema.factory.CommonFactory
 import com.exactpro.th2.common.schema.message.MessageRouter
 import com.exactpro.th2.common.utils.event.EventBatcher
-import com.exactpro.th2.common.utils.state.StateManager
+import com.exactpro.th2.common.utils.message.add
 import com.exactpro.th2.dataprovider.grpc.*
 import com.exactpro.th2.processor.api.IProcessor
 import com.exactpro.th2.processor.api.IProcessorFactory
@@ -34,8 +36,6 @@ import com.exactpro.th2.processor.core.configuration.DataType.*
 import com.exactpro.th2.processor.core.message.MessageCrawler
 import com.exactpro.th2.processor.core.state.manager.MessageStateManager
 import com.exactpro.th2.processor.utility.load
-import com.google.protobuf.Int32Value
-import com.google.protobuf.Timestamp
 import mu.KotlinLogging
 import java.time.Duration
 import java.time.Instant
@@ -121,22 +121,18 @@ class ProcessorCommand(
     private val step = Duration.parse(configuration.intervalLength)
 
     // TODO: move limits to the config
+    // TODO: add more params to loadRawMessages func
     private val stateManager = MessageStateManager(
-        100, 100, { batch -> eventRouter.send(batch) },
-        processorEventId,
-        { from: Instant, to: Instant, direction: Direction, stateSessionAlias: String, limit: Int, bookId: String ->
-            dataProvider.searchMessages(
-                MessageSearchRequest.newBuilder()
-                    .setStartTimestamp(Timestamp.newBuilder().setSeconds(from.epochSecond).setNanos(from.nano).build())
-                    .setEndTimestamp(Timestamp.newBuilder().setSeconds(to.epochSecond).setNanos(to.nano).build())
-                    .setResultCountLimit(Int32Value.of(limit))
-                    .setSearchDirection(TimeRelation.PREVIOUS)
-                    .addStream(MessageStream.newBuilder().setDirection(direction).setName(stateSessionAlias).build())
-                    .setBookId(BookId.newBuilder().setName(bookId).build())
-                    .build()
-            ) },
-        { batch -> messageRouter.send(batch) } // Is it correct?
+        100,
+        eventBatcher::onEvent,
+        { bookId, sessionAlias -> dataProvider.searchMessages(
+            MessageSearchRequest.newBuilder()
+                .setBookId(BookId.newBuilder().setName(bookId))
+                .addStream(MessageStream.newBuilder().setName(sessionAlias)).build()
+        ) },
+        { statePart -> messageRouter.send(MessageGroupBatch.newBuilder().addGroups(MessageGroup.newBuilder().add(statePart)).build()) }
     )
+
 
     private var currentFrom = from
     private var currentTo = from.doStep()
@@ -170,7 +166,7 @@ class ProcessorCommand(
 
     private fun processMessages() {
         try {
-            val state: ByteArray? = recoverState(currentFrom, currentTo, ) // FIXME: where to take other params from?
+            val state: ByteArray? = recoverState() // FIXME: where to take bookId from?
 
             MessageCrawler(
                 messageRouter,
@@ -183,7 +179,7 @@ class ProcessorCommand(
 
                 do {
                     crawler.process(currentFrom, currentTo)
-                    storeState(crawler.serializeState())
+                    storeState(crawler.serializeState()) // FIXME: where to take bookId from?
 
                     currentFrom = currentTo
                     currentTo = currentFrom.doStep()
@@ -199,11 +195,11 @@ class ProcessorCommand(
     }
 
     private fun storeState(serializeState: ByteArray) {
-        stateManager.store(serializeState, configuration.stateSessionAlias)
+        stateManager.store(serializeState, configuration.stateSessionAlias, configuration.bookId)
     }
 
-    private fun recoverState(from: Instant, to: Instant, direction: Direction, bookId: String): ByteArray? {
-        return stateManager.load(from, to, direction, configuration.stateSessionAlias, bookId)
+    private fun recoverState(): ByteArray? {
+        return stateManager.load(configuration.stateSessionAlias, configuration.bookId)
     }
 
     private fun createProcessor(

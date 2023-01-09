@@ -35,6 +35,8 @@ class Configuration @JvmOverloads constructor(
      */
     val stateSessionAlias: String,
 
+    val bookId: String,
+
     val to: String?,
     val from: String,
     val intervalLength: String = "PT10M",

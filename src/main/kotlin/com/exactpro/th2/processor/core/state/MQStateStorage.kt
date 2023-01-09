@@ -53,7 +53,7 @@ class MQStateStorage(
                 val message = iterator.next().message.rawMessage
                 yield(message)
                 if (!iterator.hasNext()) {
-                    iterator = dataProvider.searchMessages(createSearchRequest(message.metadata.timestamp))
+                    iterator = dataProvider.searchMessages(createSearchRequest(message.metadata.id.timestamp))
                 }
             }
         }.forEach { message ->
