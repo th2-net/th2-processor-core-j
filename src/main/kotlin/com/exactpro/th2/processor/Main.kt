@@ -1,5 +1,5 @@
 /*
- *  Copyright 2022 Exactpro (Exactpro Systems Limited)
+ *  Copyright 2022-2023 Exactpro (Exactpro Systems Limited)
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -37,12 +37,8 @@ import com.exactpro.th2.processor.core.message.MessageCrawler
 import com.exactpro.th2.processor.core.state.manager.MessageStateManager
 import com.exactpro.th2.processor.utility.load
 import mu.KotlinLogging
-import java.time.Duration
-import java.time.Instant
 import java.util.*
 import java.util.concurrent.ConcurrentLinkedDeque
-import java.util.concurrent.Executors
-import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
 import kotlin.system.exitProcess
 
@@ -62,7 +58,15 @@ fun main(args: Array<String>) {
             }
         })
 
-        ProcessorCommand(resources, args).run()
+        val commonFactory = CommonFactory.createFromArguments(*args).apply {
+            resources.add {
+                K_LOGGER.info { "Closing common factory" }
+                close()
+            }
+        }
+
+        Application(commonFactory)
+            .use(Application::run)
     } catch (e: InterruptedException) {
         K_LOGGER.error(e) { "Message handling interrupted" }
     } catch (e: Throwable) {

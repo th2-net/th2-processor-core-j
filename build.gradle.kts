@@ -5,6 +5,7 @@ import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
 plugins {
     kotlin("jvm") version "1.6.21"
+    kotlin("kapt") version "1.6.21"
     `java-library`
     `maven-publish`
     signing
@@ -47,16 +48,25 @@ dependencies {
     implementation("com.exactpro.th2:common:3.42.0-TH2-4262-reduce-load-on-a-separate-boxes-in-crawler-schema-3515227746-SNAPSHOT")
     implementation("com.exactpro.th2:common-utils:0.0.1-TH2-4596-3872353905-SNAPSHOT")
     implementation("com.exactpro.th2:grpc-data-provider:2.0.0-TH2-4262-reduce-load-book-and-page-3539374140-SNAPSHOT")
+    //FIXME: remove after relase
+    implementation("com.exactpro.th2:grpc-common:4.0.0-TH2-4262-reduce-load-book-and-page-3574839736-SNAPSHOT")
+    implementation("com.exactpro.th2:common:5.0.0-TH2-4262-reduce-load-book-and-page-3607143172-SNAPSHOT")
+    implementation("com.exactpro.th2:common-utils:0.0.1-book-and-page-3607472196-SNAPSHOT")
+    implementation("com.exactpro.th2:grpc-lw-data-provider:2.0.0-raw-messages-3847933308-SNAPSHOT")
 
     implementation("com.fasterxml.jackson.core:jackson-core")
     implementation("com.fasterxml.jackson.module:jackson-module-kotlin")
+    implementation("com.fasterxml.jackson.dataformat:jackson-dataformat-cbor:2.14.0")
     implementation("com.fasterxml.jackson.dataformat:jackson-dataformat-yaml")
+    implementation("com.fasterxml.jackson.datatype:jackson-datatype-jsr310")
+
+    testCompileOnly("com.google.auto.service:auto-service:1.0.1")
+    kaptTest("com.google.auto.service:auto-service:1.0.1")
 
     testImplementation("org.jetbrains.kotlin:kotlin-test-junit5")
     testImplementation("org.mockito.kotlin:mockito-kotlin:4.0.0")
 
-    testImplementation("org.junit.jupiter:junit-jupiter-api:5.9.0")
-    testRuntimeOnly("org.junit.jupiter:junit-jupiter:5.9.0")
+    testImplementation("org.junit.jupiter:junit-jupiter:5.9.0")
 }
 
 publishing {
@@ -121,6 +131,20 @@ tasks {
     test {
         useJUnitPlatform {
             excludeTags("integration-test")
+        }
+    }
+
+    jar {
+        manifest {
+            attributes(
+                "Created-By" to "${System.getProperty("java.version")} (${System.getProperty("java.vendor")})",
+                "Specification-Title" to "",
+                "Specification-Vendor" to "Exactpro Systems LLC",
+                "Implementation-Title" to project.displayName,
+                "Implementation-Vendor" to "Exactpro Systems LLC",
+                "Implementation-Vendor-Id" to "com.exactpro",
+                "Implementation-Version" to project.version
+            )
         }
     }
 

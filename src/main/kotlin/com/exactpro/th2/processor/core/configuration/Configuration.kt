@@ -16,46 +16,28 @@
 
 package com.exactpro.th2.processor.core.configuration
 
-import com.exactpro.th2.common.schema.factory.CommonFactory
-import com.exactpro.th2.processor.api.IProcessorFactory
 import com.exactpro.th2.processor.api.IProcessorSettings
-import com.exactpro.th2.processor.utility.load
-import com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.databind.module.SimpleModule
-import com.fasterxml.jackson.dataformat.yaml.YAMLFactory
-import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import java.util.concurrent.TimeUnit
 
 class Configuration @JvmOverloads constructor(
 
-    val type: DataType = DataType.MESSAGE_GROUP,
+    val messages: MessageConfiguration? = null,
+    val events: EventConfiguration? = null,
     /**
      * Name of th2 session alias for storing/restoring state. th2 box name will be used if the value is blank.
      */
-    val stateSessionAlias: String,
+    val stateSessionAlias: String = "",
+    val enableStoreState: Boolean = false,
 
     val bookId: String,
 
-    val to: String?,
+    val to: String? = null,
     val from: String,
     val intervalLength: String = "PT10M",
-    val th2Groups: List<String> = emptyList(),
+    val syncInterval: String = "PT10M",
 
     val awaitTimeout: Long = 10,
     val awaitUnit: TimeUnit = TimeUnit.SECONDS,
 
     val processorSettings: IProcessorSettings
-) {
-    companion object {
-        private val OBJECT_MAPPER: ObjectMapper = ObjectMapper(YAMLFactory()).apply {
-            registerKotlinModule()
-            registerModule(SimpleModule().addAbstractTypeMapping(IProcessorSettings::class.java, load<IProcessorFactory>().settingsClass))
-            configure(FAIL_ON_UNKNOWN_PROPERTIES, false)
-        }
-
-        fun create(commonFactory: CommonFactory): Configuration {
-            return commonFactory.getCustomConfiguration(Configuration::class.java, OBJECT_MAPPER)
-        }
-    }
-}
+)
