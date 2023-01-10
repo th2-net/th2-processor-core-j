@@ -30,6 +30,7 @@ import com.exactpro.th2.dataprovider.lw.grpc.QueueDataProviderService
 import com.exactpro.th2.processor.api.IProcessor
 import com.exactpro.th2.processor.core.Context
 import com.exactpro.th2.processor.core.configuration.Configuration
+import com.exactpro.th2.processor.core.configuration.CrawlerConfiguration
 import com.exactpro.th2.processor.core.configuration.MessageConfiguration
 import org.junit.jupiter.api.Test
 import org.mockito.kotlin.any
@@ -54,11 +55,14 @@ class TestCradleMessageGroupCrawler {
         on { subscribeExclusive(any()) }.thenReturn(monitor)
     }
     private val processor = mock<IProcessor> {  }
-    private val configuration = spy(Configuration(
+    private val crawlerConfiguration = spy(CrawlerConfiguration(
         from = FROM.toString(),
         to = TO.toString(),
-        processorSettings = mock {  }
     ))
+    private val configuration = Configuration(
+        crawler = crawlerConfiguration,
+        processorSettings = mock {  }
+    )
     private val context = mock<Context> {
         on { dataProvider }.thenReturn(dataProvider)
         on { eventBatcher }.thenReturn(eventBatcher)
@@ -99,7 +103,7 @@ class TestCradleMessageGroupCrawler {
     }
 
     private fun createCrawler(kinds: Set<AnyMessage.KindCase>): CradleMessageGroupCrawler {
-        whenever(configuration.messages).thenReturn(MessageConfiguration(
+        whenever(crawlerConfiguration.messages).thenReturn(MessageConfiguration(
             kinds,
             mapOf(BOOK_NAME to setOf())
         ))

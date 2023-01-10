@@ -25,6 +25,7 @@ import com.exactpro.th2.common.utils.event.EventBatcher
 import com.exactpro.th2.common.utils.message.toProtoDuration
 import com.exactpro.th2.processor.api.IProcessor
 import com.exactpro.th2.processor.core.configuration.Configuration
+import com.exactpro.th2.processor.core.configuration.CrawlerConfiguration
 import com.google.protobuf.Message
 import com.google.protobuf.Timestamp
 import com.google.protobuf.util.Timestamps.toString
@@ -44,11 +45,14 @@ abstract class Crawler<T : Message>(
     private val monitor: ExclusiveSubscriberMonitor
     private val dummyController: Controller<T> = DummyController(processorEventID)
 
-    protected val syncInterval: ProtoDuration = Duration.parse(configuration.syncInterval).toProtoDuration()
+    protected val crawlerConfiguration: CrawlerConfiguration = requireNotNull(configuration.crawler) {
+        "The `crawler` configuration can not be null"
+    }
+    protected val syncInterval: ProtoDuration = Duration.parse(crawlerConfiguration.syncInterval).toProtoDuration()
     protected val queue: String
-    protected val awaitTimeout = configuration.awaitTimeout
+    protected val awaitTimeout = crawlerConfiguration.awaitTimeout
 
-    protected val awaitUnit = configuration.awaitUnit
+    protected val awaitUnit = crawlerConfiguration.awaitUnit
     @Volatile
     protected var controller: Controller<T> = dummyController
 

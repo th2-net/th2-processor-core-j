@@ -44,7 +44,9 @@ class EventCrawler(
     private val dataProvider: QueueDataProviderService = context.dataProvider
 
     private val bookToScopes = requireNotNull(
-        requireNotNull(context.configuration.events).bookToScopes
+        requireNotNull(crawlerConfiguration.events) {
+            "The `crawler.events` configuration can not be null"
+        }.bookToScopes
     ).also { map ->
         check(map.isNotEmpty()) {
             "Incorrect configuration parameters: the `bookToScopes` option is empty"

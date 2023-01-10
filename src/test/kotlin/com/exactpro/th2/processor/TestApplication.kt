@@ -43,6 +43,7 @@ import com.exactpro.th2.processor.api.IProcessor
 import com.exactpro.th2.processor.api.IProcessorFactory
 import com.exactpro.th2.processor.api.ProcessorContext
 import com.exactpro.th2.processor.core.configuration.Configuration
+import com.exactpro.th2.processor.core.configuration.CrawlerConfiguration
 import com.exactpro.th2.processor.core.configuration.EventConfiguration
 import com.exactpro.th2.processor.core.configuration.MessageConfiguration
 import com.fasterxml.jackson.databind.ObjectMapper
@@ -84,16 +85,19 @@ class TestApplication {
         on { getService(eq(QueueDataProviderService::class.java)) }.thenReturn(queueDataProvider)
         on { getService(eq(DataProviderService::class.java)) }.thenReturn(dataProvider)
     }
-    private val configuration = spy(Configuration(
+    private val crawlerConfiguration = spy(CrawlerConfiguration(
         from = FROM.toString(),
         to = TO.toString(),
         intervalLength = INTERVAL_LENGTH.toString(),
         syncInterval = INTERVAL_LENGTH.dividedBy(2).toString(),
         awaitTimeout = 1,
+    ))
+    private val configuration = Configuration(
+        crawler = crawlerConfiguration,
         stateSessionAlias = STATE_SESSION_ALIAS,
         enableStoreState = true,
         processorSettings = mock { }
-    ))
+    )
     private val cradleConfiguration = mock<CradleConfiguration> {
         on { cradleMaxMessageBatchSize }.thenReturn(1_024L * 1_024L)
     }
@@ -142,7 +146,7 @@ class TestApplication {
     }
 
     private fun mockMessages() {
-        whenever(configuration.messages)
+        whenever(crawlerConfiguration.messages)
             .thenReturn(MessageConfiguration(setOf(MESSAGE, RAW_MESSAGE), mapOf(KNOWN_BOOK to setOf())))
         whenever(queueDataProvider.searchMessageGroups(any())).thenAnswer {
             with(messageListener.firstValue) {
@@ -181,7 +185,7 @@ class TestApplication {
     }
 
     private fun mockEvents() {
-        whenever(configuration.events)
+        whenever(crawlerConfiguration.events)
             .thenReturn(EventConfiguration(mapOf(KNOWN_BOOK to setOf())))
         whenever(queueDataProvider.searchEvents(any())).thenAnswer {
             with(eventListener.firstValue) {

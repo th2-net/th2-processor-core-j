@@ -17,39 +17,34 @@
 package com.exactpro.th2.processor
 
 import com.exactpro.th2.Service
-import com.exactpro.th2.common.event.Event
 import com.exactpro.th2.common.grpc.EventBatch
 import com.exactpro.th2.common.grpc.EventID
 import com.exactpro.th2.common.metrics.registerLiveness
-import com.exactpro.th2.common.metrics.registerReadiness
 import com.exactpro.th2.common.schema.factory.CommonFactory
 import com.exactpro.th2.common.schema.message.MessageRouter
 import com.exactpro.th2.common.utils.event.EventBatcher
-import com.exactpro.th2.common.utils.message.toTimestamp
 import com.exactpro.th2.dataprovider.lw.grpc.DataProviderService
 import com.exactpro.th2.dataprovider.lw.grpc.QueueDataProviderService
 import com.exactpro.th2.processor.api.IProcessor
 import com.exactpro.th2.processor.api.IProcessorFactory
+import com.exactpro.th2.processor.api.IProcessorSettings
 import com.exactpro.th2.processor.api.ProcessorContext
 import com.exactpro.th2.processor.core.Context
-import com.exactpro.th2.processor.core.Crawler
 import com.exactpro.th2.processor.core.configuration.Configuration
-import com.exactpro.th2.processor.core.event.EventCrawler
-import com.exactpro.th2.processor.core.message.CradleMessageGroupCrawler
 import com.exactpro.th2.processor.core.state.CrawlerState
 import com.exactpro.th2.processor.core.state.DataProviderStateStorage
 import com.exactpro.th2.processor.core.state.IStateStorage
+import com.exactpro.th2.processor.strategy.AbstractStrategy
+import com.exactpro.th2.processor.strategy.CrawlerStrategy
+import com.exactpro.th2.processor.strategy.RealtimeStrategy
 import com.exactpro.th2.processor.utility.OBJECT_MAPPER
 import com.exactpro.th2.processor.utility.load
-import com.exactpro.th2.processor.utility.log
 import com.fasterxml.jackson.databind.DeserializationFeature
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import com.google.common.util.concurrent.ThreadFactoryBuilder
 import mu.KotlinLogging
-import java.time.Duration
-import java.time.Instant
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
@@ -63,7 +58,7 @@ class Application(
 
     @Suppress("SpellCheckingInspection")
     private val liveness = registerLiveness("main")
-    private val readiness = registerReadiness("main")
+
     private val eventRouter: MessageRouter<EventBatch> = commonFactory.eventBatchRouter
     private val eventBatcher = EventBatcher(executor = scheduler, onBatch = eventRouter::sendAll)
     private val messageRouter = commonFactory.messageRouterMessageGroupBatch
@@ -73,15 +68,10 @@ class Application(
     }
 
     private val processorFactory: IProcessorFactory
-    private val configuration: Configuration
     private val stateStorage: IStateStorage
 
-    private val from: Instant
-    private val to: Instant?
-    private val intervalLength: Duration
-
-    private var currentFrom: Instant
-    private var currentTo: Instant
+    private val configuration: Configuration
+    private val strategy: AbstractStrategy
 
     init {
         liveness.enable()
@@ -94,43 +84,28 @@ class Application(
             registerModules(objectMapper)
         }
 
-        configuration = commonFactory
+        with(
+            commonFactory
             .getCustomConfiguration(Configuration::class.java, objectMapper)
             .validate()
+        ) {
+            configuration = this
 
-        stateStorage = DataProviderStateStorage(
-            messageRouter,
-            eventBatcher,
-            commonFactory.grpcRouter.getService(DataProviderService::class.java),
-            commonFactory.boxConfiguration.bookName,
-            configuration.stateSessionAlias,
-            commonFactory.cradleConfiguration.cradleMaxMessageBatchSize
-        )
+            stateStorage = DataProviderStateStorage(
+                messageRouter,
+                eventBatcher,
+                commonFactory.grpcRouter.getService(DataProviderService::class.java),
+                commonFactory.boxConfiguration.bookName,
+                stateSessionAlias,
+                commonFactory.cradleConfiguration.cradleMaxMessageBatchSize
+            )
 
-        from = Instant.parse(configuration.from)
-        to = configuration.to?.run(Instant::parse)
-        check(to == null || to >= from) {
-            "Incorrect configuration parameters: " +
-                    "the ${configuration.to} `to` option is less than the ${configuration.from} `from`"
+            strategy = when {
+                crawler != null -> CrawlerStrategy(eventRouter, configuration, stateStorage)
+                realtime != null -> RealtimeStrategy()
+                else -> error("$CONFIGURATION_ERROR_PREFIX processor work mode is unknown")
+            }
         }
-
-        intervalLength = Duration.parse(configuration.intervalLength)
-        check(!intervalLength.isNegative && !intervalLength.isZero) {
-            "Incorrect configuration parameters: " +
-                    "the ${configuration.intervalLength} `interval length` option is negative or zero"
-        }
-        val syncInterval = Duration.parse(configuration.syncInterval)
-        check(!syncInterval.isNegative && !syncInterval.isZero) {
-            "Incorrect configuration parameters: " +
-                    "the ${configuration.syncInterval} `synchronize interval` option is negative or zero"
-        }
-        check(syncInterval <= intervalLength) {
-            "Incorrect configuration parameters: " +
-                    "the ${configuration.syncInterval} `synchronize interval` option is greater than the ${configuration.intervalLength} `interval length`"
-        }
-
-        currentFrom = from
-        currentTo = from.doStep()
     }
 
     override fun run() {
@@ -139,13 +114,12 @@ class Application(
             .also(eventRouter::sendAll)
             .run { getEvents(0).id }
 
-        try {
-            val crawlerState: CrawlerState? = recoverState(processorEventId)?.also { state ->
-                if (!doStepAndCheck(processorEventId, state.timestamp)) {
-                    return
-                }
-            }
-            createProcessor(processorEventId, configuration, crawlerState?.processorState).use { processor ->
+            val crawlerState: CrawlerState? = recoverState(processorEventId)
+            createProcessor(
+                processorEventId,
+                configuration.processorSettings,
+                crawlerState?.processorState
+            ).use { processor ->
                 val context = Context(
                     eventBatcher,
                     processorEventId,
@@ -156,41 +130,8 @@ class Application(
                     processor
                 )
 
-                val crawlers: Set<Crawler<*>> = mutableSetOf<Crawler<*>>().apply {
-                    configuration.messages?.let { add(CradleMessageGroupCrawler(context)) }
-                    configuration.events?.let { add(EventCrawler(context)) }
-                }
-                try {
-                    check(crawlers.isNotEmpty()) {
-                        "Neither of `messages`, `events` options are filled. Processor must work in any mode"
-                    }
-                    K_LOGGER.info { "Processing started" }
-                    readiness.enable()
-
-                    do {
-                        val intervalEventId = reportStartProcessing(processorEventId)
-                        crawlers.parallelStream().forEach { crawler ->
-                            crawler.processInterval(currentFrom.toTimestamp(), currentTo.toTimestamp(), intervalEventId)
-                        }
-                        storeState(intervalEventId, CrawlerState(currentTo, processor.serializeState()))
-                        reportEndProcessing(intervalEventId)
-
-                        if (!doStepAndCheck(processorEventId, currentTo)) {
-                            break
-                        }
-                    } while (true)
-                } finally {
-                    crawlers.forEach { crawler ->
-                        runCatching(crawler::close)
-                            .onFailure { e ->
-                                K_LOGGER.error(e) { "Closing ${crawler::class.java.simpleName} failure" }
-                            }
-                    }
-                }
+                strategy.run(context, crawlerState, processor)
             }
-        } finally {
-            readiness.disable()
-        }
     }
 
     override fun close() {
@@ -210,48 +151,6 @@ class Application(
             }
         }.onFailure { e ->
             K_LOGGER.error(e) { "Close event batcher failure" }
-        }
-    }
-
-    private fun doStepAndCheck(processorEventId: EventID, from: Instant): Boolean {
-        currentFrom = from
-        currentTo = currentFrom.doStep()
-        if (currentFrom == currentTo) {
-            reportProcessingComplete(processorEventId)
-            return false
-        }
-        return true
-    }
-
-    private fun reportProcessingComplete(processorEventId: EventID) = Event.start()
-        .name("Whole time range is processed [${configuration.from} - ${configuration.to})")
-        .type(EVENT_TYPE_PROCESS_INTERVAL)
-        .toBatchProto(processorEventId)
-        .log(K_LOGGER)
-        .also(eventRouter::sendAll)
-
-    private fun reportStartProcessing(processorEventId: EventID) = Event.start()
-        .name("Process interval [$currentFrom - $currentTo)")
-        .type(EVENT_TYPE_PROCESS_INTERVAL)
-        .toBatchProto(processorEventId)
-        .log(K_LOGGER)
-        .also(eventRouter::sendAll)
-        .run { getEvents(0).id }
-
-    private fun reportEndProcessing(intervalEventId: EventID) = Event.start()
-        .name("Complete processing")
-        .type(EVENT_TYPE_PROCESS_INTERVAL)
-        .toBatchProto(intervalEventId)
-        .log(K_LOGGER)
-        .also(eventRouter::sendAll)
-        .run { getEvents(0).id }
-
-    private fun storeState(processorEventId: EventID, crawlerState: CrawlerState) {
-        if (configuration.enableStoreState) {
-            OBJECT_MAPPER.writeValueAsBytes(crawlerState).also { rawData ->
-                stateStorage.saveState(processorEventId, rawData)
-            }
-            K_LOGGER.warn { "Store state method isn't implemented" }
         }
     }
 
@@ -275,7 +174,7 @@ class Application(
 
     private fun createProcessor(
         processorEventId: EventID,
-        configuration: Configuration,
+        processorSettings: IProcessorSettings,
         processorState: ByteArray?
     ): IProcessor = runCatching {
         processorFactory.create(
@@ -284,7 +183,7 @@ class Application(
                 scheduler,
                 eventBatcher,
                 processorEventId,
-                configuration.processorSettings,
+                processorSettings,
                 processorState
             )
         )
@@ -292,36 +191,21 @@ class Application(
         throw IllegalStateException("Failed to create processor instance", it)
     }
 
-    private fun Instant.doStep(): Instant {
-        if (to == this) {
-            return this
-        }
-
-        val next = this.plus(intervalLength)
-        return when {
-            to != null && to < next -> to
-            else -> next
-        }
-    }
-
     companion object {
         private val K_LOGGER = KotlinLogging.logger {}
 
-        private const val EVENT_TYPE_PROCESS_INTERVAL = "Process interval"
+        const val EVENT_TYPE_PROCESS_INTERVAL = "Process interval"
+
+        const val CONFIGURATION_ERROR_PREFIX = "Incorrect configuration parameters: "
 
         private fun Configuration.validate(): Configuration = this.apply {
-            check(awaitTimeout > 0) {
-                "Incorrect configuration parameters: the $awaitTimeout `await timeout` option isn't positive"
+            check((crawler != null) xor (realtime != null)) {
+                "Incorrect configuration parameters: process must work in one of crawler (configured: ${crawler != null}) / realtime (configured: ${realtime != null}) mode."
             }
 
             check(!enableStoreState || stateSessionAlias.isNotBlank()) {
                 "Incorrect configuration parameters: the $stateSessionAlias `state session alias` option is blank, " +
                         "the `enable store state` is $enableStoreState"
-            }
-
-            check((messages != null) || (events != null)) {
-                "Incorrect configuration parameters: " +
-                        "neither of $messages `messages`, $events `events` options are filled."
             }
         }
     }

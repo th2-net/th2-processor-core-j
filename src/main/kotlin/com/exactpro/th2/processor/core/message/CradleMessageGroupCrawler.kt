@@ -44,10 +44,12 @@ internal class CradleMessageGroupCrawler(
 ) {
     private val dataProvider: QueueDataProviderService = context.dataProvider
 
-    private val messageKinds = requireNotNull(context.configuration.messages).messageKinds
+    private val messageKinds = requireNotNull(crawlerConfiguration.messages).messageKinds
 
     private val bookToGroups = requireNotNull(
-        requireNotNull(context.configuration.messages).bookToGroups
+        requireNotNull(crawlerConfiguration.messages) {
+            "The `crawler.messages` configuration can not be null"
+        }.bookToGroups
     ).also { map ->
         check(map.isNotEmpty()) {
             "Incorrect configuration parameters: the `bookToGroups` option is empty"
