@@ -18,16 +18,18 @@ package com.exactpro.th2.processor
 
 import com.exactpro.th2.Service
 import com.exactpro.th2.common.event.Event
-import com.exactpro.th2.common.grpc.EventBatch
-import com.exactpro.th2.common.grpc.EventID
+import com.exactpro.th2.common.grpc.*
+import com.exactpro.th2.common.message.toJson
 import com.exactpro.th2.common.metrics.registerLiveness
 import com.exactpro.th2.common.metrics.registerReadiness
 import com.exactpro.th2.common.schema.factory.CommonFactory
 import com.exactpro.th2.common.schema.message.MessageRouter
 import com.exactpro.th2.common.utils.event.EventBatcher
+import com.exactpro.th2.common.utils.message.add
+import com.exactpro.th2.common.utils.message.id
 import com.exactpro.th2.common.utils.message.toTimestamp
-import com.exactpro.th2.dataprovider.lw.grpc.DataProviderService
-import com.exactpro.th2.dataprovider.lw.grpc.QueueDataProviderService
+import com.exactpro.th2.common.utils.state.StateManager
+import com.exactpro.th2.dataprovider.lw.grpc.*
 import com.exactpro.th2.processor.api.IProcessor
 import com.exactpro.th2.processor.api.IProcessorFactory
 import com.exactpro.th2.processor.api.ProcessorContext
@@ -37,8 +39,8 @@ import com.exactpro.th2.processor.core.configuration.Configuration
 import com.exactpro.th2.processor.core.event.EventCrawler
 import com.exactpro.th2.processor.core.message.CradleMessageGroupCrawler
 import com.exactpro.th2.processor.core.state.CrawlerState
-import com.exactpro.th2.processor.core.state.DataProviderStateStorage
-import com.exactpro.th2.processor.core.state.IStateStorage
+import com.exactpro.th2.processor.core.state.DataProviderStateManager
+import com.exactpro.th2.processor.core.state.EventBuilder
 import com.exactpro.th2.processor.utility.OBJECT_MAPPER
 import com.exactpro.th2.processor.utility.load
 import com.exactpro.th2.processor.utility.log
@@ -47,6 +49,8 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import com.google.common.util.concurrent.ThreadFactoryBuilder
+import com.google.protobuf.Int32Value
+import com.google.protobuf.Timestamp
 import mu.KotlinLogging
 import java.time.Duration
 import java.time.Instant
@@ -67,14 +71,15 @@ class Application(
     private val eventRouter: MessageRouter<EventBatch> = commonFactory.eventBatchRouter
     private val eventBatcher = EventBatcher(executor = scheduler, onBatch = eventRouter::sendAll)
     private val messageRouter = commonFactory.messageRouterMessageGroupBatch
-    private val dataProvider = commonFactory.grpcRouter.getService(QueueDataProviderService::class.java)
+    private val queueDataProvider = commonFactory.grpcRouter.getService(QueueDataProviderService::class.java)
+    private val dataProvider = commonFactory.grpcRouter.getService(DataProviderService::class.java)
     private val rootEventId: EventID = requireNotNull(commonFactory.rootEventId) {
         "Common's root event id can not be null"
     }
 
     private val processorFactory: IProcessorFactory
     private val configuration: Configuration
-    private val stateStorage: IStateStorage
+    private val stateManager: StateManager
 
     private val from: Instant
     private val to: Instant?
@@ -98,20 +103,19 @@ class Application(
             .getCustomConfiguration(Configuration::class.java, objectMapper)
             .validate()
 
-        stateStorage = DataProviderStateStorage(
-            messageRouter,
-            eventBatcher,
-            commonFactory.grpcRouter.getService(DataProviderService::class.java),
-            commonFactory.boxConfiguration.bookName,
+        stateManager = DataProviderStateManager(
+            ::onEvent,
+            { bookName, sessionAlias, timestamp -> loadRawMessages(timestamp) },
+            { statePart -> storeRawMessages(statePart) },
             configuration.stateSessionAlias,
-            commonFactory.cradleConfiguration.cradleMaxMessageBatchSize
+            100 // TODO: move it to the config
         )
 
-        from = Instant.parse(configuration.from)
+        from = Instant.parse(configuration.bookName)
         to = configuration.to?.run(Instant::parse)
         check(to == null || to >= from) {
             "Incorrect configuration parameters: " +
-                    "the ${configuration.to} `to` option is less than the ${configuration.from} `from`"
+                    "the ${configuration.to} `to` option is less than the ${configuration.bookName} `from`"
         }
 
         intervalLength = Duration.parse(configuration.intervalLength)
@@ -151,7 +155,7 @@ class Application(
                     processorEventId,
                     eventRouter,
                     messageRouter,
-                    dataProvider,
+                    queueDataProvider,
                     configuration,
                     processor
                 )
@@ -224,7 +228,7 @@ class Application(
     }
 
     private fun reportProcessingComplete(processorEventId: EventID) = Event.start()
-        .name("Whole time range is processed [${configuration.from} - ${configuration.to})")
+        .name("Whole time range is processed [${configuration.bookName} - ${configuration.to})")
         .type(EVENT_TYPE_PROCESS_INTERVAL)
         .toBatchProto(processorEventId)
         .log(K_LOGGER)
@@ -249,7 +253,7 @@ class Application(
     private fun storeState(processorEventId: EventID, crawlerState: CrawlerState) {
         if (configuration.enableStoreState) {
             OBJECT_MAPPER.writeValueAsBytes(crawlerState).also { rawData ->
-                stateStorage.saveState(processorEventId, rawData)
+                stateManager.store(processorEventId, rawData, configuration.stateSessionAlias, configuration.bookName)
             }
             K_LOGGER.warn { "Store state method isn't implemented" }
         }
@@ -257,7 +261,7 @@ class Application(
 
     private fun recoverState(processorEventId: EventID): CrawlerState? {
         if (configuration.enableStoreState) {
-            stateStorage.loadState(processorEventId)?.let { rawData ->
+            stateManager.load(processorEventId, configuration.stateSessionAlias, configuration.bookName)?.let { rawData ->
                 runCatching {
                     OBJECT_MAPPER.readValue(rawData, CrawlerState::class.java)
                 }.onFailure { e ->
@@ -304,10 +308,46 @@ class Application(
         }
     }
 
+    private fun storeRawMessages(batch: MessageGroupBatch) {
+        messageRouter.send(batch)
+    }
+
+    private fun loadRawMessages(timestamp: Timestamp): Iterator<MessageSearchResponse> {
+        return dataProvider.searchMessages(createSearchRequest(timestamp).also {
+            K_LOGGER.info { "Request to load state ${it.toJson()}" }
+        })
+    }
+
+    //TODO: Is timestamp enough for creating search request?
+    private fun createSearchRequest(timestamp: Timestamp = Instant.now().toTimestamp()): MessageSearchRequest =
+        requestBuilder.apply {
+            startTimestamp = timestamp
+        }.build()
+
+    private val requestBuilder = MessageSearchRequest.newBuilder().apply {
+        searchDirection = TimeRelation.PREVIOUS
+        resultCountLimit = Int32Value.of(COUNT_LIMIT)
+        addResponseFormats(RAW_MESSAGE_RESPONSE_FORMAT)
+        bookIdBuilder.apply {
+            name = configuration.bookName
+        }
+        addStreamBuilder().apply {
+            name = configuration.stateSessionAlias
+            direction = Direction.SECOND
+        }
+    }
+
+    private fun onEvent(event: com.exactpro.th2.common.grpc.Event) {
+        eventBatcher.onEvent(event)
+    }
+
     companion object {
         private val K_LOGGER = KotlinLogging.logger {}
 
         private const val EVENT_TYPE_PROCESS_INTERVAL = "Process interval"
+
+        private const val RAW_MESSAGE_RESPONSE_FORMAT = "BASE_64"
+        private const val COUNT_LIMIT = 100
 
         private fun Configuration.validate(): Configuration = this.apply {
             check(awaitTimeout > 0) {

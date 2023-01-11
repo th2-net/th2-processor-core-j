@@ -55,9 +55,9 @@ class TestCradleMessageGroupCrawler {
     }
     private val processor = mock<IProcessor> {  }
     private val configuration = spy(Configuration(
-        from = FROM.toString(),
+        bookName = FROM.toString(),
         to = TO.toString(),
-        processorSettings = mock {  }
+        bookName = mock {  }
     ))
     private val context = mock<Context> {
         on { dataProvider }.thenReturn(dataProvider)

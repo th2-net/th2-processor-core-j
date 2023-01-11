@@ -29,7 +29,7 @@ class Configuration @JvmOverloads constructor(
     val stateSessionAlias: String = "",
     val enableStoreState: Boolean = false,
 
-    val bookId: String,
+    val bookName: String,
 
     val to: String? = null,
     val from: String,

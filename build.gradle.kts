@@ -45,13 +45,10 @@ repositories {
 dependencies {
     api(platform("com.exactpro.th2:bom:4.0.2"))
 
-    implementation("com.exactpro.th2:common:3.42.0-TH2-4262-reduce-load-on-a-separate-boxes-in-crawler-schema-3515227746-SNAPSHOT")
-    implementation("com.exactpro.th2:common-utils:0.0.1-TH2-4596-3872353905-SNAPSHOT")
-    implementation("com.exactpro.th2:grpc-data-provider:2.0.0-TH2-4262-reduce-load-book-and-page-3539374140-SNAPSHOT")
     //FIXME: remove after relase
     implementation("com.exactpro.th2:grpc-common:4.0.0-TH2-4262-reduce-load-book-and-page-3574839736-SNAPSHOT")
     implementation("com.exactpro.th2:common:5.0.0-TH2-4262-reduce-load-book-and-page-3607143172-SNAPSHOT")
-    implementation("com.exactpro.th2:common-utils:0.0.1-book-and-page-3607472196-SNAPSHOT")
+    implementation("com.exactpro.th2:common-utils:0.0.1-TH2-4596-3893027899-SNAPSHOT")
     implementation("com.exactpro.th2:grpc-lw-data-provider:2.0.0-raw-messages-3847933308-SNAPSHOT")
 
     implementation("com.fasterxml.jackson.core:jackson-core")

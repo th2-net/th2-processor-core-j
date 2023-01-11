@@ -18,11 +18,7 @@ package com.exactpro.th2.processor.core.state
 import com.exactpro.th2.common.event.Event.Status.FAILED
 import com.exactpro.th2.common.event.bean.IRow
 import com.exactpro.th2.common.event.bean.Table
-import com.exactpro.th2.common.grpc.Direction
-import com.exactpro.th2.common.grpc.EventID
-import com.exactpro.th2.common.grpc.MessageGroup
-import com.exactpro.th2.common.grpc.MessageGroupBatch
-import com.exactpro.th2.common.grpc.RawMessage
+import com.exactpro.th2.common.grpc.*
 import com.exactpro.th2.common.message.plusAssign
 import com.exactpro.th2.common.message.toJson
 import com.exactpro.th2.common.message.toTimestamp
@@ -30,9 +26,11 @@ import com.exactpro.th2.common.schema.message.MessageRouter
 import com.exactpro.th2.common.utils.event.EventBatcher
 import com.exactpro.th2.common.utils.message.id
 import com.exactpro.th2.common.utils.message.logId
+import com.exactpro.th2.common.utils.state.StateManager
 import com.exactpro.th2.dataprovider.lw.grpc.DataProviderService
 import com.exactpro.th2.dataprovider.lw.grpc.MessageGroupResponse
 import com.exactpro.th2.dataprovider.lw.grpc.MessageSearchRequest
+import com.exactpro.th2.dataprovider.lw.grpc.MessageSearchResponse
 import com.exactpro.th2.dataprovider.lw.grpc.TimeRelation.PREVIOUS
 import com.exactpro.th2.processor.core.state.StateType.Companion.METADATA_STATE_TYPE_PROPERTY
 import com.exactpro.th2.processor.core.state.StateType.END
@@ -52,14 +50,13 @@ import javax.annotation.concurrent.NotThreadSafe
 typealias EventBuilder = com.exactpro.th2.common.event.Event
 
 @NotThreadSafe
-class DataProviderStateStorage(
-    private val messageRouter: MessageRouter<MessageGroupBatch>,
-    private val eventBatcher: EventBatcher,
-    private val dataProvider: DataProviderService,
-    private val bookName: String,
+class DataProviderStateManager(
+    private val onEvent: (event: Event) -> Unit,
+    private val loadRawMessages: (bookName: String, sessionAlias: String, timestamp: Timestamp) -> Iterator<MessageSearchResponse>,
+    private val storeRawMessage: (statePart: MessageGroupBatch) -> Unit,
     private val stateSessionAlias: String,
     maxMessageSize: Long = METADATA_SIZE + MIN_STATE_SIZE
-) : IStateStorage {
+) : StateManager {
 
     init {
         check(maxMessageSize - METADATA_SIZE >= MIN_STATE_SIZE) {
@@ -70,66 +67,49 @@ class DataProviderStateStorage(
     private val stateSize = maxMessageSize - METADATA_SIZE
     private var sequenceCounter: Long = System.nanoTime()
 
-    private val requestBuilder = MessageSearchRequest.newBuilder().apply {
-        searchDirection = PREVIOUS
-        resultCountLimit = Int32Value.of(COUNT_LIMIT)
-        addResponseFormats(RAW_MESSAGE_RESPONSE_FORMAT)
-        bookIdBuilder.apply {
-            name = bookName
-        }
-        addStreamBuilder().apply {
-            name = stateSessionAlias
-            direction = Direction.SECOND
-        }
-    }
-
-    override fun loadState(parentEventId: EventID): ByteArray? {
+    override fun load(parentEventId: EventID, stateSessionAlias: String, bookName: String): ByteArray? {
         K_LOGGER.info { "Started state loading" }
 
         val state = mutableListOf<Pair<StateType, MessageGroupResponse>>()
         sequence {
-            var iterator = dataProvider.searchMessages(createSearchRequest().also {
-                K_LOGGER.info { "Request to load state ${it.toJson()}" }
-            })
+            var iterator = loadRawMessages(bookName, stateSessionAlias, Instant.now().toTimestamp())
 
             while (iterator.hasNext()) {
                 val message: MessageGroupResponse = iterator.next().message
                 yield(message)
                 if (!iterator.hasNext()) {
-                    iterator = dataProvider.searchMessages(createSearchRequest(message.messageId.timestamp).also {
-                        K_LOGGER.info { "Request to load state ${it.toJson()}" }
-                    })
+                    iterator = loadRawMessages(bookName, stateSessionAlias, message.messageId.timestamp)
                 }
             }
         }.map(::mapStateTypeToMessage)
-        .dropWhile { (stateType, _) -> !(stateType == SINGLE || stateType == END) }
-        .forEach { pair ->
-            val (stateType, response) = pair
-            K_LOGGER.debug { "Process raw response ${response.toJson()}" }
-            when (stateType) {
-                SINGLE -> {
-                    reportStateLoaded(parentEventId, pair)
-                    return response.bodyRaw.toByteArray()
-                }
-                END, INTERMEDIATE, START -> {
-                    if (state.checkAndModify(pair)) {
-                        val list: List<Byte> =
-                            state.reversed().flatMap { (_, message) -> message.bodyRaw.toByteArray().asSequence() }
-                        reportStateLoaded(parentEventId, state)
-                        return ByteArray(list.size).apply { list.forEachIndexed(this::set) }
+            .dropWhile { (stateType, _) -> !(stateType == SINGLE || stateType == END) }
+            .forEach { pair ->
+                val (stateType, response) = pair
+                K_LOGGER.debug { "Process raw response ${response.toJson()}" }
+                when (stateType) {
+                    SINGLE -> {
+                        reportStateLoaded(parentEventId, pair)
+                        return response.bodyRaw.toByteArray()
+                    }
+                    END, INTERMEDIATE, START -> {
+                        if (state.checkAndModify(pair)) {
+                            val list: List<Byte> =
+                                state.reversed().flatMap { (_, message) -> message.bodyRaw.toByteArray().asSequence() }
+                            reportStateLoaded(parentEventId, state)
+                            return ByteArray(list.size).apply { list.forEachIndexed(this::set) }
+                        }
+                    }
+                    else -> {
+                        reportSkipState(parentEventId, state, pair)
+                        state.clear()
                     }
                 }
-                else -> {
-                    reportSkipState(parentEventId, state, pair)
-                    state.clear()
-                }
             }
-        }
         reportEmptyStateLoaded(parentEventId)
         return null
     }
 
-    override fun saveState(parentEventId: EventID, state: ByteArray) {
+    override fun store(parentEventId: EventID, state: ByteArray, stateSessionAlias: String, bookName: String) {
         val stateTimestamp = Instant.now().toTimestamp()
         val batches = mutableListOf<MessageGroupBatch>()
         if (state.size > stateSize) {
@@ -160,18 +140,17 @@ class DataProviderStateStorage(
                 stateSessionAlias
             ))
         }
-        batches.forEach(messageRouter::sendAll)
         reportStateSaved(parentEventId, batches)
+
+        batches.forEach { batch -> storeRawMessage(batch) }
     }
 
     private fun reportEmptyStateLoaded(processorEventId: EventID) {
-        eventBatcher.onEvent(
-            EventBuilder.start().apply {
-                name("State not found or broken in $stateSessionAlias session alias")
-                type(TYPE_LOAD_STATE)
-            }.toProto(processorEventId)
-                .log(K_LOGGER)
-        )
+        onEvent(EventBuilder.start().apply {
+            name("State not found or broken in $stateSessionAlias session alias")
+            type(TYPE_LOAD_STATE)
+        }.toProto(processorEventId)
+            .log(K_LOGGER))
     }
 
     private fun reportSkipState(
@@ -179,65 +158,52 @@ class DataProviderStateStorage(
         state: List<Pair<StateType, MessageGroupResponse>>,
         pair: Pair<StateType, MessageGroupResponse>
     ) {
-        eventBatcher.onEvent(
-            EventBuilder.start().apply {
-                name("Drop broken state with size ${state.size} and skipped unknown message ${pair.log}")
-                type(TYPE_LOAD_STATE)
-                status(FAILED)
-                bodyData(state.toTable("Broken state"))
-                bodyData(pair.toTable("Unknown state type"))
-                state.forEach { (_, response) -> messageID(response.messageId) }
-            }.toProto(processorEventId)
-                .log(K_LOGGER)
-        )
+        onEvent(EventBuilder.start().apply {
+            name("Drop broken state with size ${state.size} and skipped unknown message ${pair.log}")
+            type(TYPE_LOAD_STATE)
+            status(FAILED)
+            bodyData(state.toTable("Broken state"))
+            bodyData(pair.toTable("Unknown state type"))
+            state.forEach { (_, response) -> messageID(response.messageId) }
+        }.toProto(processorEventId)
+            .log(K_LOGGER))
     }
 
     private fun reportStateLoaded(processorEventId: EventID, pair: Pair<StateType, MessageGroupResponse>) {
         reportStateLoaded(processorEventId, listOf(pair))
     }
     private fun reportStateLoaded(processorEventId: EventID, state: List<Pair<StateType, MessageGroupResponse>>) {
-        eventBatcher.onEvent(
-            EventBuilder.start().apply {
-                name("Loaded state from ${state.size} messages")
-                type(TYPE_LOAD_STATE)
-                bodyData(state.toTable("State"))
-                state.forEach { (_, response) -> messageID(response.messageId) }
-            }.toProto(processorEventId)
-            .log(K_LOGGER)
-        )
+        onEvent(EventBuilder.start().apply {
+            name("Loaded state from ${state.size} messages")
+            type(TYPE_LOAD_STATE)
+            bodyData(state.toTable("State"))
+            state.forEach { (_, response) -> messageID(response.messageId) }
+        }.toProto(processorEventId)
+            .log(K_LOGGER))
     }
 
     private fun reportStateSaved(intervalEventId: EventID, batches: MutableList<MessageGroupBatch>) {
-        eventBatcher.onEvent(
-            EventBuilder.start().apply {
-                var messages = 0
-                batches.forEach { batch ->
-                    batch.groupsList.asSequence()
-                        .flatMap(MessageGroup::getMessagesList)
-                        .forEach { anyMessage ->
-                            messages++
-                            messageID(anyMessage.id)
-                        }
-                }
-                name("Published state via $messages messages in ${batches.size} batches")
-                type("Save state")
-            }.toProto(intervalEventId)
-            .log(K_LOGGER)
-        )
+        onEvent(EventBuilder.start().apply {
+            var messages = 0
+            batches.forEach { batch ->
+                batch.groupsList.asSequence()
+                    .flatMap(MessageGroup::getMessagesList)
+                    .forEach { anyMessage ->
+                        messages++
+                        messageID(anyMessage.id)
+                    }
+            }
+            name("Published state via $messages messages in ${batches.size} batches")
+            type("Save state")
+        }.toProto(intervalEventId)
+            .log(K_LOGGER))
     }
-
-    private fun createSearchRequest(timestamp: Timestamp = Instant.now().toTimestamp()): MessageSearchRequest =
-        requestBuilder.apply {
-            startTimestamp = timestamp
-        }.build()
 
     companion object {
         private val K_LOGGER = KotlinLogging.logger { }
         private val PROPERTY_SIZE: Long = (METADATA_STATE_TYPE_PROPERTY.length + StateType.values().maxOf { it.name.length }).toLong()
 
         private const val TYPE_LOAD_STATE = "Load state"
-        private const val RAW_MESSAGE_RESPONSE_FORMAT = "BASE_64"
-        private const val COUNT_LIMIT = 100
 
         const val MIN_STATE_SIZE = 256 * 1_024
         val METADATA_SIZE = PROPERTY_SIZE
