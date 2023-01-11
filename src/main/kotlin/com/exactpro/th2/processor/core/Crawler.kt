@@ -19,10 +19,12 @@ package com.exactpro.th2.processor.core
 import com.exactpro.th2.common.event.Event
 import com.exactpro.th2.common.event.Event.Status.FAILED
 import com.exactpro.th2.common.grpc.EventID
+import com.exactpro.th2.common.schema.factory.CommonFactory
 import com.exactpro.th2.common.schema.message.ExclusiveSubscriberMonitor
 import com.exactpro.th2.common.schema.message.MessageRouter
 import com.exactpro.th2.common.utils.event.EventBatcher
 import com.exactpro.th2.common.utils.message.toProtoDuration
+import com.exactpro.th2.dataprovider.lw.grpc.QueueDataProviderService
 import com.exactpro.th2.processor.api.IProcessor
 import com.exactpro.th2.processor.core.configuration.Configuration
 import com.exactpro.th2.processor.core.configuration.CrawlerConfiguration
@@ -35,16 +37,19 @@ import java.time.Duration
 typealias ProtoDuration = com.google.protobuf.Duration
 
 abstract class Crawler<T : Message>(
+    commonFactory: CommonFactory,
+    router: MessageRouter<T>,
     protected val eventBatcher: EventBatcher,
+    protected val processor: IProcessor,
     processorEventID: EventID,
-    messageRouter: MessageRouter<T>,
-    configuration: Configuration,
-    protected val processor: IProcessor
+    configuration: Configuration
 ) : AutoCloseable {
 
     private val monitor: ExclusiveSubscriberMonitor
     private val dummyController: Controller<T> = DummyController(processorEventID)
 
+    protected val dataProvider: QueueDataProviderService = commonFactory.grpcRouter
+        .getService(QueueDataProviderService::class.java)
     protected val crawlerConfiguration: CrawlerConfiguration = requireNotNull(configuration.crawler) {
         "The `crawler` configuration can not be null"
     }
@@ -58,7 +63,7 @@ abstract class Crawler<T : Message>(
 
     init {
         // FIXME: if connection is be broken, subscribtion doesn't recover (exclusive queue specific)
-        monitor = messageRouter.subscribeExclusive { _, batch ->
+        monitor = router.subscribeExclusive { _, batch ->
             try {
                 controller.actual(batch)
             } catch (e: Exception) {

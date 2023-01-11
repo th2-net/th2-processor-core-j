@@ -17,39 +17,31 @@
 package com.exactpro.th2.processor.strategy
 
 import com.exactpro.th2.common.event.Event
-import com.exactpro.th2.common.grpc.EventBatch
 import com.exactpro.th2.common.grpc.EventID
-import com.exactpro.th2.common.metrics.registerReadiness
-import com.exactpro.th2.common.schema.message.MessageRouter
 import com.exactpro.th2.common.utils.message.toTimestamp
 import com.exactpro.th2.processor.Application
 import com.exactpro.th2.processor.Application.Companion.CONFIGURATION_ERROR_PREFIX
 import com.exactpro.th2.processor.api.IProcessor
 import com.exactpro.th2.processor.core.Context
 import com.exactpro.th2.processor.core.Crawler
-import com.exactpro.th2.processor.core.configuration.Configuration
 import com.exactpro.th2.processor.core.configuration.CrawlerConfiguration
 import com.exactpro.th2.processor.core.event.EventCrawler
 import com.exactpro.th2.processor.core.message.CradleMessageGroupCrawler
 import com.exactpro.th2.processor.core.state.CrawlerState
-import com.exactpro.th2.processor.core.state.DataProviderStateStorage
-import com.exactpro.th2.processor.utility.OBJECT_MAPPER
 import com.exactpro.th2.processor.utility.log
 import mu.KotlinLogging
 import java.time.Duration
 import java.time.Instant
 
-class CrawlerStrategy(
-    private val eventRouter: MessageRouter<EventBatch>,
-    private val configuration: Configuration,
-    private val stateStorage: DataProviderStateStorage
-): AbstractStrategy() {
+class CrawlerStrategy(context: Context): AbstractStrategy(context) {
 
-    private val crawlerConfig: CrawlerConfiguration = requireNotNull(configuration.crawler) {
+    private val crawlerConfig: CrawlerConfiguration = requireNotNull(context.configuration.crawler) {
         CONFIGURATION_ERROR_PREFIX +
                 "the `crawler` setting can be null"
     }
-    private val readiness = registerReadiness("main")
+    private val eventRouter = context.commonFactory.eventBatchRouter
+    private val processor: IProcessor
+    private val crawlers: Set<Crawler<*>>
 
     private val from: Instant
     private val to: Instant?
@@ -59,7 +51,6 @@ class CrawlerStrategy(
     private var currentTo: Instant
 
     init {
-
         check(crawlerConfig.awaitTimeout > 0) {
             "Incorrect configuration parameters: the ${crawlerConfig.awaitTimeout} `await timeout` option isn't positive"
         }
@@ -93,46 +84,60 @@ class CrawlerStrategy(
 
         currentFrom = from
         currentTo = from.doStep()
-    }
 
-    override fun run(context: Context, state: CrawlerState?, processor: IProcessor) {
-        state?.let { //FIXME: move to special method
-            if (!doStepAndCheck(context.processorEventId, state.timestamp)) {
-                return
+        processor = recoverState(CrawlerState::class.java)
+            ?.let { state ->
+                if (!doStepAndCheck(context.processorEventId, state.timestamp)) {
+                    UNSET_PROCESSOR
+                } else {
+                    createProcessor(state.processorState)
+                }
+            } ?: createProcessor(null)
+
+        if (processor === UNSET_PROCESSOR) {
+            crawlers = emptySet()
+        } else {
+            crawlers = mutableSetOf<Crawler<*>>().apply {
+                crawlerConfig.messages?.let { add(CradleMessageGroupCrawler(context, processor)) }
+                crawlerConfig.events?.let { add(EventCrawler(context, processor)) }
             }
-        }
 
-        val crawlers: Set<Crawler<*>> = mutableSetOf<Crawler<*>>().apply {
-            crawlerConfig.messages?.let { add(CradleMessageGroupCrawler(context)) }
-            crawlerConfig.events?.let { add(EventCrawler(context)) }
-        }
-        try {
             check(crawlers.isNotEmpty()) {
                 "Neither of `messages`, `events` options are filled. Processor must work in any mode"
             }
             K_LOGGER.info { "Processing started" }
             readiness.enable()
+        }
+    }
 
-            do {
-                val intervalEventId = reportStartProcessing(context.processorEventId)
-                crawlers.parallelStream().forEach { crawler ->
-                    crawler.processInterval(currentFrom.toTimestamp(), currentTo.toTimestamp(), intervalEventId)
-                }
-                storeState(intervalEventId, CrawlerState(currentTo, processor.serializeState()))
-                reportEndProcessing(intervalEventId)
+    override fun run() {
+        if (processor === UNSET_PROCESSOR) {
+            return
+        }
 
-                if (!doStepAndCheck(context.processorEventId, currentTo)) {
-                    break
-                }
-            } while (true)
-        } finally {
-            readiness.disable()
-            crawlers.forEach { crawler ->
-                runCatching(crawler::close)
-                    .onFailure { e ->
-                        K_LOGGER.error(e) { "Closing ${crawler::class.java.simpleName} failure" }
-                    }
+        do {
+            val intervalEventId = reportStartProcessing(context.processorEventId)
+            crawlers.parallelStream().forEach { crawler ->
+                crawler.processInterval(currentFrom.toTimestamp(), currentTo.toTimestamp(), intervalEventId)
             }
+            storeState(intervalEventId, CrawlerState(currentTo, processor.serializeState()))
+            reportEndProcessing(intervalEventId)
+
+            if (!doStepAndCheck(context.processorEventId, currentTo)) {
+                break
+            }
+        } while (isActive)
+    }
+
+    override fun close() {
+        super.close()
+        crawlers.forEach { crawler ->
+            runCatching(crawler::close).onFailure { e ->
+                K_LOGGER.error(e) { "Closing ${crawler::class.java.simpleName} failure" }
+            }
+        }
+        runCatching(processor::close).onFailure { e ->
+            K_LOGGER.error(e) { "Closing ${processor::class.java.simpleName} failure" }
         }
     }
 
@@ -169,15 +174,6 @@ class CrawlerStrategy(
         .also(eventRouter::sendAll)
         .run { getEvents(0).id }
 
-    private fun storeState(processorEventId: EventID, crawlerState: CrawlerState) {
-        if (configuration.enableStoreState) {
-            OBJECT_MAPPER.writeValueAsBytes(crawlerState).also { rawData ->
-                stateStorage.saveState(processorEventId, rawData)
-            }
-            K_LOGGER.warn { "Store state method isn't implemented" }
-        }
-    }
-
     private fun Instant.doStep(): Instant {
         if (to == this) {
             return this
@@ -192,5 +188,7 @@ class CrawlerStrategy(
 
     companion object {
         private val K_LOGGER = KotlinLogging.logger {}
+
+        private val UNSET_PROCESSOR = object : IProcessor {}
     }
 }

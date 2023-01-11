@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Exactpro (Exactpro Systems Limited)
+ * Copyright 2022-2023 Exactpro (Exactpro Systems Limited)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,23 +16,22 @@
 
 package com.exactpro.th2.processor.core
 
-import com.exactpro.th2.common.grpc.EventBatch
 import com.exactpro.th2.common.grpc.EventID
-import com.exactpro.th2.common.grpc.MessageGroupBatch
-import com.exactpro.th2.common.schema.message.MessageRouter
+import com.exactpro.th2.common.schema.factory.CommonFactory
 import com.exactpro.th2.common.utils.event.EventBatcher
-import com.exactpro.th2.dataprovider.lw.grpc.QueueDataProviderService
-import com.exactpro.th2.processor.api.IProcessor
+import com.exactpro.th2.processor.api.IProcessorFactory
 import com.exactpro.th2.processor.core.configuration.Configuration
+import com.exactpro.th2.processor.core.state.DataProviderStateStorage
+import java.util.concurrent.ScheduledExecutorService
 
 data class Context(
-    val eventBatcher: EventBatcher,
+    val commonFactory: CommonFactory,
+    val processorFactory: IProcessorFactory,
+
     val processorEventId: EventID,
+    val stateStorage: DataProviderStateStorage,
 
-    val eventRouter: MessageRouter<EventBatch>,
-    val messageRouter: MessageRouter<MessageGroupBatch>,
-
-    val dataProvider: QueueDataProviderService,
+    val eventBatcher: EventBatcher,
+    val scheduler: ScheduledExecutorService,
     val configuration: Configuration,
-    val processor: IProcessor
 )

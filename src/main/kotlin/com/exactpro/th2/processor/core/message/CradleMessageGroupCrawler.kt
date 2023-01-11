@@ -26,7 +26,7 @@ import com.exactpro.th2.common.message.toJson
 import com.exactpro.th2.dataprovider.lw.grpc.MessageGroupsQueueSearchRequest
 import com.exactpro.th2.dataprovider.lw.grpc.MessageGroupsQueueSearchRequest.BookGroups
 import com.exactpro.th2.dataprovider.lw.grpc.MessageLoadedStatistic
-import com.exactpro.th2.dataprovider.lw.grpc.QueueDataProviderService
+import com.exactpro.th2.processor.api.IProcessor
 import com.exactpro.th2.processor.core.Context
 import com.exactpro.th2.processor.core.Crawler
 import com.exactpro.th2.processor.core.message.controller.CradleMessageGroupController
@@ -35,15 +35,15 @@ import mu.KotlinLogging
 
 internal class CradleMessageGroupCrawler(
     context: Context,
+    processor: IProcessor,
 ) : Crawler<MessageGroupBatch>(
+    context.commonFactory,
+    context.commonFactory.messageRouterMessageGroupBatch,
     context.eventBatcher,
+    processor,
     context.processorEventId,
-    context.messageRouter,
-    context.configuration,
-    context.processor
+    context.configuration
 ) {
-    private val dataProvider: QueueDataProviderService = context.dataProvider
-
     private val messageKinds = requireNotNull(crawlerConfiguration.messages).messageKinds
 
     private val bookToGroups = requireNotNull(

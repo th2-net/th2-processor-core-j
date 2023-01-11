@@ -16,10 +16,71 @@
 
 package com.exactpro.th2.processor.strategy
 
+import com.exactpro.th2.common.grpc.EventID
+import com.exactpro.th2.common.metrics.registerReadiness
 import com.exactpro.th2.processor.api.IProcessor
+import com.exactpro.th2.processor.api.ProcessorContext
 import com.exactpro.th2.processor.core.Context
-import com.exactpro.th2.processor.core.state.CrawlerState
+import com.exactpro.th2.processor.utility.OBJECT_MAPPER
 
-abstract class AbstractStrategy {
-    abstract fun run(context: Context, state: CrawlerState?, processor: IProcessor)
+abstract class AbstractStrategy(
+    protected val context: Context
+): AutoCloseable {
+    @Volatile
+    private var _isActive = true
+    protected val isActive
+        get() = _isActive
+
+    protected val readiness = registerReadiness("strategy")
+
+    open fun run() {}
+
+    override fun close() {
+        readiness.disable()
+        _isActive = false
+    }
+
+    protected fun storeState(parentEventId: EventID, state: Any) {
+        with(context) {
+            if (configuration.enableStoreState) {
+                OBJECT_MAPPER.writeValueAsBytes(state).also { rawData ->
+                    stateStorage.saveState(parentEventId, rawData)
+                }
+            }
+        }
+    }
+
+    protected fun <T> recoverState(stateClass: Class<T>): T? {
+        with(context) {
+            if (configuration.enableStoreState) {
+                stateStorage.loadState(processorEventId)?.let { rawData ->
+                    runCatching {
+                        OBJECT_MAPPER.readValue(rawData, stateClass)
+                    }.onFailure { e ->
+                        throw IllegalStateException("State of $stateClass class can't be decode from " +
+                            rawData.joinToString("") { it.toString(radix = 16).padStart(2, '0') }, e)
+                    }.getOrThrow()
+                }
+            }
+            return null
+        }
+    }
+    protected fun createProcessor(
+        processorState: ByteArray?
+    ): IProcessor = runCatching {
+        with(context) {
+            processorFactory.create(
+                ProcessorContext(
+                    commonFactory,
+                    scheduler,
+                    eventBatcher,
+                    processorEventId,
+                    configuration.processorSettings,
+                    processorState
+                )
+            )
+        }
+    }.getOrElse {
+        throw IllegalStateException("Failed to create processor instance", it)
+    }
 }

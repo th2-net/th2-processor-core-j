@@ -24,20 +24,14 @@ import com.exactpro.th2.common.schema.factory.CommonFactory
 import com.exactpro.th2.common.schema.message.MessageRouter
 import com.exactpro.th2.common.utils.event.EventBatcher
 import com.exactpro.th2.dataprovider.lw.grpc.DataProviderService
-import com.exactpro.th2.dataprovider.lw.grpc.QueueDataProviderService
-import com.exactpro.th2.processor.api.IProcessor
 import com.exactpro.th2.processor.api.IProcessorFactory
-import com.exactpro.th2.processor.api.IProcessorSettings
-import com.exactpro.th2.processor.api.ProcessorContext
 import com.exactpro.th2.processor.core.Context
 import com.exactpro.th2.processor.core.configuration.Configuration
-import com.exactpro.th2.processor.core.state.CrawlerState
 import com.exactpro.th2.processor.core.state.DataProviderStateStorage
 import com.exactpro.th2.processor.core.state.IStateStorage
 import com.exactpro.th2.processor.strategy.AbstractStrategy
 import com.exactpro.th2.processor.strategy.CrawlerStrategy
 import com.exactpro.th2.processor.strategy.RealtimeStrategy
-import com.exactpro.th2.processor.utility.OBJECT_MAPPER
 import com.exactpro.th2.processor.utility.load
 import com.fasterxml.jackson.databind.DeserializationFeature
 import com.fasterxml.jackson.databind.ObjectMapper
@@ -62,7 +56,6 @@ class Application(
     private val eventRouter: MessageRouter<EventBatch> = commonFactory.eventBatchRouter
     private val eventBatcher = EventBatcher(executor = scheduler, onBatch = eventRouter::sendAll)
     private val messageRouter = commonFactory.messageRouterMessageGroupBatch
-    private val dataProvider = commonFactory.grpcRouter.getService(QueueDataProviderService::class.java)
     private val rootEventId: EventID = requireNotNull(commonFactory.rootEventId) {
         "Common's root event id can not be null"
     }
@@ -100,41 +93,41 @@ class Application(
                 commonFactory.cradleConfiguration.cradleMaxMessageBatchSize
             )
 
+            val processorEventId = processorFactory.createProcessorEvent()
+                .toBatchProto(rootEventId)
+                .also(eventRouter::sendAll)
+                .run { getEvents(0).id }
+
+            val context = Context(
+                commonFactory,
+                processorFactory,
+                processorEventId,
+                stateStorage,
+                eventBatcher,
+                scheduler,
+                configuration,
+            )
+
             strategy = when {
-                crawler != null -> CrawlerStrategy(eventRouter, configuration, stateStorage)
-                realtime != null -> RealtimeStrategy()
+                crawler != null -> CrawlerStrategy(context)
+                realtime != null -> RealtimeStrategy(context)
                 else -> error("$CONFIGURATION_ERROR_PREFIX processor work mode is unknown")
             }
         }
     }
 
     override fun run() {
-        val processorEventId = processorFactory.createProcessorEvent()
-            .toBatchProto(rootEventId)
-            .also(eventRouter::sendAll)
-            .run { getEvents(0).id }
-
-            val crawlerState: CrawlerState? = recoverState(processorEventId)
-            createProcessor(
-                processorEventId,
-                configuration.processorSettings,
-                crawlerState?.processorState
-            ).use { processor ->
-                val context = Context(
-                    eventBatcher,
-                    processorEventId,
-                    eventRouter,
-                    messageRouter,
-                    dataProvider,
-                    configuration,
-                    processor
-                )
-
-                strategy.run(context, crawlerState, processor)
-            }
+        strategy.run()
     }
 
     override fun close() {
+        runCatching {
+            K_LOGGER.info { "Close ${strategy::class.java.simpleName}" }
+            strategy.close()
+        }.onFailure { e ->
+            K_LOGGER.error(e) { "Close ${strategy::class.java.simpleName} failure" }
+        }
+
         runCatching {
             K_LOGGER.info { "Close event batcher" }
             eventBatcher.close()
@@ -142,7 +135,7 @@ class Application(
             K_LOGGER.error(e) { "Close event batcher failure" }
         }
 
-        kotlin.runCatching {
+        runCatching {
             K_LOGGER.info { "Shutdown scheduler" }
             scheduler.shutdown()
             if (!scheduler.awaitTermination(1, TimeUnit.SECONDS)) {
@@ -152,43 +145,6 @@ class Application(
         }.onFailure { e ->
             K_LOGGER.error(e) { "Close event batcher failure" }
         }
-    }
-
-    private fun recoverState(processorEventId: EventID): CrawlerState? {
-        if (configuration.enableStoreState) {
-            stateStorage.loadState(processorEventId)?.let { rawData ->
-                runCatching {
-                    OBJECT_MAPPER.readValue(rawData, CrawlerState::class.java)
-                }.onFailure { e ->
-                    throw IllegalStateException("State can't be decode from ${
-                        rawData.joinToString("") {
-                            it.toString(radix = 16).padStart(2, '0')
-                        }
-                    }", e
-                    )
-                }.getOrThrow()
-            }
-        }
-        return null
-    }
-
-    private fun createProcessor(
-        processorEventId: EventID,
-        processorSettings: IProcessorSettings,
-        processorState: ByteArray?
-    ): IProcessor = runCatching {
-        processorFactory.create(
-            ProcessorContext(
-                commonFactory,
-                scheduler,
-                eventBatcher,
-                processorEventId,
-                processorSettings,
-                processorState
-            )
-        )
-    }.getOrElse {
-        throw IllegalStateException("Failed to create processor instance", it)
     }
 
     companion object {

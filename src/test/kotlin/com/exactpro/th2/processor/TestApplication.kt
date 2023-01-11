@@ -46,6 +46,8 @@ import com.exactpro.th2.processor.core.configuration.Configuration
 import com.exactpro.th2.processor.core.configuration.CrawlerConfiguration
 import com.exactpro.th2.processor.core.configuration.EventConfiguration
 import com.exactpro.th2.processor.core.configuration.MessageConfiguration
+import com.exactpro.th2.processor.core.configuration.RealtimeConfiguration
+import com.exactpro.th2.processor.strategy.RealtimeStrategy.Companion.IN_ATTRIBUTE
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.google.auto.service.AutoService
 import org.junit.jupiter.api.Test
@@ -54,6 +56,7 @@ import org.mockito.kotlin.any
 import org.mockito.kotlin.argumentCaptor
 import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
+import org.mockito.kotlin.same
 import org.mockito.kotlin.spy
 import org.mockito.kotlin.times
 import org.mockito.kotlin.verify
@@ -69,6 +72,7 @@ class TestApplication {
     private val messageListener = argumentCaptor<MessageListener<MessageGroupBatch>> { }
     private val messageRouter = mock<MessageRouter<MessageGroupBatch>> {
         on { subscribeExclusive(messageListener.capture()) }.thenReturn(messageMonitor)
+        on { subscribe(messageListener.capture(), same(IN_ATTRIBUTE)) }.thenReturn(messageMonitor)
     }
     private val eventMonitor = mock<ExclusiveSubscriberMonitor> {
         on { queue }.thenReturn(EVENT_EXCLUSIVE_QUEUE)
@@ -76,6 +80,7 @@ class TestApplication {
     private val eventListener = argumentCaptor<MessageListener<EventBatch>> { }
     private val eventRouter = mock<MessageRouter<EventBatch>> {
         on { subscribeExclusive(eventListener.capture()) }.thenReturn(eventMonitor)
+        on { subscribe(eventListener.capture(), same(IN_ATTRIBUTE)) }.thenReturn(eventMonitor)
     }
     private val queueDataProvider = mock<QueueDataProviderService> { }
     private val dataProvider = mock<DataProviderService> {
@@ -92,12 +97,12 @@ class TestApplication {
         syncInterval = INTERVAL_LENGTH.dividedBy(2).toString(),
         awaitTimeout = 1,
     ))
-    private val configuration = Configuration(
+    private val configuration = spy(Configuration(
         crawler = crawlerConfiguration,
         stateSessionAlias = STATE_SESSION_ALIAS,
         enableStoreState = true,
         processorSettings = mock { }
-    )
+    ))
     private val cradleConfiguration = mock<CradleConfiguration> {
         on { cradleMaxMessageBatchSize }.thenReturn(1_024L * 1_024L)
     }
@@ -120,7 +125,8 @@ class TestApplication {
         mockEvents()
         mockMessages()
         Application(commonFactory).use(Application::run)
-        verifyRouters()
+        verify()
+        verifyCrawlerRouters()
     }
 
     @Test
@@ -128,7 +134,8 @@ class TestApplication {
     fun `test event crawling`() {
         mockEvents()
         Application(commonFactory).use(Application::run)
-        verifyRouters()
+        verify()
+        verifyCrawlerRouters()
     }
 
     @Test
@@ -136,13 +143,34 @@ class TestApplication {
     fun `test message, raw message crawling`() {
         mockMessages()
         Application(commonFactory).use(Application::run)
-        verifyRouters()
+        verify()
+        verifyCrawlerRouters()
     }
 
-    private fun verifyRouters() {
+    @Test
+    fun `test realtime mode`() {
+        mockRealtime()
+        Application(commonFactory).use(Application::run)
+        verify()
+        val eventSender = argumentCaptor<EventBatch> { }
+        verify(eventRouter, times(2)).sendAll(eventSender.capture())
+        verify(messageRouter, times(1)).sendAll(any())
+
+        verify(eventRouter, times(1)).subscribe(any(), same(IN_ATTRIBUTE))
+        verify(eventMonitor, times(1)).unsubscribe()
+
+        verify(messageRouter, times(1)).subscribe(any(), same(IN_ATTRIBUTE))
+        verify(messageMonitor, times(1)).unsubscribe()
+    }
+
+    private fun verify() {
+        verify(dataProvider, times(1)).searchMessages(any())
+    }
+
+    private fun verifyCrawlerRouters() {
+        verify(messageRouter, times(1)).sendAll(any())
         //TODO: processor, start processing, end processing, processing complete, ?, state loading
         verify(eventRouter, times(6)).sendAll(any())
-        verify(messageRouter, times(1)).sendAll(any())
     }
 
     private fun mockMessages() {
@@ -184,6 +212,12 @@ class TestApplication {
         }
     }
 
+    private fun mockRealtime() {
+        whenever(configuration.crawler)
+            .thenReturn(null)
+        whenever(configuration.realtime)
+            .thenReturn(RealtimeConfiguration(enableMessageSubscribtion = true, enableEventSubscribtion = true))
+    }
     private fun mockEvents() {
         whenever(crawlerConfiguration.events)
             .thenReturn(EventConfiguration(mapOf(KNOWN_BOOK to setOf())))
