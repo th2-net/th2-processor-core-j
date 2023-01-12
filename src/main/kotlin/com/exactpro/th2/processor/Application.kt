@@ -25,8 +25,6 @@ import com.exactpro.th2.common.metrics.registerReadiness
 import com.exactpro.th2.common.schema.factory.CommonFactory
 import com.exactpro.th2.common.schema.message.MessageRouter
 import com.exactpro.th2.common.utils.event.EventBatcher
-import com.exactpro.th2.common.utils.message.add
-import com.exactpro.th2.common.utils.message.id
 import com.exactpro.th2.common.utils.message.toTimestamp
 import com.exactpro.th2.common.utils.state.StateManager
 import com.exactpro.th2.dataprovider.lw.grpc.*
@@ -40,7 +38,6 @@ import com.exactpro.th2.processor.core.event.EventCrawler
 import com.exactpro.th2.processor.core.message.CradleMessageGroupCrawler
 import com.exactpro.th2.processor.core.state.CrawlerState
 import com.exactpro.th2.processor.core.state.DataProviderStateManager
-import com.exactpro.th2.processor.core.state.EventBuilder
 import com.exactpro.th2.processor.utility.OBJECT_MAPPER
 import com.exactpro.th2.processor.utility.load
 import com.exactpro.th2.processor.utility.log
@@ -105,7 +102,7 @@ class Application(
 
         stateManager = DataProviderStateManager(
             ::onEvent,
-            { bookName, sessionAlias, timestamp -> loadRawMessages(timestamp) },
+            { bookName, sessionAlias, timestamp -> loadRawMessages(bookName, sessionAlias, timestamp) },
             { statePart -> storeRawMessages(statePart) },
             configuration.stateSessionAlias,
             100 // TODO: move it to the config
@@ -312,16 +309,17 @@ class Application(
         messageRouter.send(batch)
     }
 
-    private fun loadRawMessages(timestamp: Timestamp): Iterator<MessageSearchResponse> {
-        return dataProvider.searchMessages(createSearchRequest(timestamp).also {
+    private fun loadRawMessages(bookName: String, sessionAlias: String, timestamp: Timestamp): Iterator<MessageSearchResponse> {
+        return dataProvider.searchMessages(createSearchRequest(bookName, sessionAlias, timestamp).also {
             K_LOGGER.info { "Request to load state ${it.toJson()}" }
         })
     }
 
-    //TODO: Is timestamp enough for creating search request?
-    private fun createSearchRequest(timestamp: Timestamp = Instant.now().toTimestamp()): MessageSearchRequest =
+    private fun createSearchRequest(bookName: String, sessionAlias: String, timestamp: Timestamp = Instant.now().toTimestamp()): MessageSearchRequest =
         requestBuilder.apply {
             startTimestamp = timestamp
+            bookId = BookId.newBuilder().setName(bookName).build()
+            addStream(MessageStream.newBuilder().setName(sessionAlias).setDirection(DIRECTION).build())
         }.build()
 
     private val requestBuilder = MessageSearchRequest.newBuilder().apply {
@@ -348,6 +346,8 @@ class Application(
 
         private const val RAW_MESSAGE_RESPONSE_FORMAT = "BASE_64"
         private const val COUNT_LIMIT = 100
+
+        val DIRECTION = Direction.SECOND
 
         private fun Configuration.validate(): Configuration = this.apply {
             check(awaitTimeout > 0) {
