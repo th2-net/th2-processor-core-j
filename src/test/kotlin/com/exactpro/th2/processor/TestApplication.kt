@@ -139,7 +139,7 @@ class TestApplication {
     private fun verifyRouters() {
         //TODO: processor, start processing, end processing, processing complete, ?, state loading
         verify(eventRouter, times(6)).sendAll(any())
-        verify(messageRouter, times(1)).sendAll(any())
+        verify(messageRouter, times(1)).send(any())
     }
 
     private fun mockMessages() {

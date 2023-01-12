@@ -105,10 +105,10 @@ class Application(
             { bookName, sessionAlias, timestamp -> loadRawMessages(bookName, sessionAlias, timestamp) },
             { statePart -> storeRawMessages(statePart) },
             configuration.stateSessionAlias,
-            100 // TODO: move it to the config
+            300000 // TODO: move it to the config
         )
 
-        from = Instant.parse(configuration.bookName)
+        from = Instant.parse(configuration.from)
         to = configuration.to?.run(Instant::parse)
         check(to == null || to >= from) {
             "Incorrect configuration parameters: " +
