@@ -85,14 +85,15 @@ class TestApplication {
         on { getService(eq(DataProviderService::class.java)) }.thenReturn(dataProvider)
     }
     private val configuration = spy(Configuration(
-        bookName = FROM.toString(),
+        from = FROM.toString(),
         to = TO.toString(),
         intervalLength = INTERVAL_LENGTH.toString(),
         syncInterval = INTERVAL_LENGTH.dividedBy(2).toString(),
         awaitTimeout = 1,
         stateSessionAlias = STATE_SESSION_ALIAS,
         enableStoreState = true,
-        bookName = mock { }
+        bookName = "test_book_name",
+        processorSettings = mock {  }
     ))
     private val cradleConfiguration = mock<CradleConfiguration> {
         on { cradleMaxMessageBatchSize }.thenReturn(1_024L * 1_024L)
