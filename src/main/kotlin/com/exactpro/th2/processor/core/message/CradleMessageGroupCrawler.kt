@@ -88,25 +88,17 @@ internal class CradleMessageGroupCrawler(
                 }
             }
     }
-    override fun Event.supplement(e: Exception): Event {
-        if (e is CrawlerHandleMessageException) {
-            e.messageIds.forEach(this::messageID)
-        }
-        return this
-    }
     private fun reportResponse(response: MessageLoadedStatistic, intervalEventId: EventID) {
         K_LOGGER.info { "Request ${response.toJson()}" }
-        eventBatcher.onEvent(
-            Event.start()
-                .name("Requested messages")
-                .type(EVENT_TYPE_REQUEST_TO_DATA_PROVIDER)
-                .bodyData(Table().apply {
-                    type = "Event statistic"
-                    fields = response.statList.map(::toRow)
-                })
-                .toProto(intervalEventId)
-                .also(eventBatcher::onEvent)
-        )
+        Event.start()
+            .name("Requested messages")
+            .type(EVENT_TYPE_REQUEST_TO_DATA_PROVIDER)
+            .bodyData(Table().apply {
+                type = "Event statistic"
+                fields = response.statList.map(::toRow)
+            })
+            .toProto(intervalEventId)
+            .also(eventBatcher::onEvent)
     }
 
     companion object {

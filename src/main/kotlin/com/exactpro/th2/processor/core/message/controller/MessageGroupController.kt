@@ -28,7 +28,7 @@ import com.exactpro.th2.dataprovider.lw.grpc.EventLoadedStatistic
 import com.exactpro.th2.dataprovider.lw.grpc.MessageLoadedStatistic
 import com.exactpro.th2.processor.api.IProcessor
 import com.exactpro.th2.processor.core.Controller
-import com.exactpro.th2.processor.core.message.CrawlerHandleMessageException
+import com.exactpro.th2.processor.core.HandleMessageException
 import com.exactpro.th2.processor.core.state.StateUpdater
 import com.exactpro.th2.processor.utility.ifTrue
 import javax.annotation.concurrent.ThreadSafe
@@ -50,11 +50,11 @@ internal abstract class MessageGroupController(
                             updateLastProcessed(anyMessage.timestamp)
                             handle(anyMessage)
                         }.onFailure { e ->
-                            throw CrawlerHandleMessageException(listOf(anyMessage.id), e)
+                            throw HandleMessageException(listOf(anyMessage.id), e)
                         }
                     }
                 }.onFailure { e ->
-                    throw CrawlerHandleMessageException(group.messagesList.map { it.id }, e)
+                    throw HandleMessageException(group.messagesList.map { it.id }, e)
                 }
             }
         }.ifTrue(::signal)

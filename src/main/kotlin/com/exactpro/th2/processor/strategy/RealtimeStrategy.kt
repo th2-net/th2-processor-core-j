@@ -16,12 +16,19 @@
 
 package com.exactpro.th2.processor.strategy
 
+import com.exactpro.th2.common.event.Event
+import com.exactpro.th2.common.event.IBodyData
 import com.exactpro.th2.common.grpc.AnyMessage.KindCase.MESSAGE
 import com.exactpro.th2.common.grpc.AnyMessage.KindCase.RAW_MESSAGE
+import com.exactpro.th2.common.grpc.EventID
+import com.exactpro.th2.common.grpc.MessageID
 import com.exactpro.th2.common.schema.message.SubscriberMonitor
+import com.exactpro.th2.common.utils.event.logId
+import com.exactpro.th2.common.utils.message.id
 import com.exactpro.th2.processor.Application
 import com.exactpro.th2.processor.api.IProcessor
 import com.exactpro.th2.processor.core.Context
+import com.exactpro.th2.processor.core.ProcessorException
 import com.exactpro.th2.processor.core.configuration.RealtimeConfiguration
 import com.exactpro.th2.processor.core.state.RealtimeState
 import com.exactpro.th2.processor.utility.OBJECT_MAPPER
@@ -44,26 +51,48 @@ class RealtimeStrategy(context: Context): AbstractStrategy(context) {
 
         messageMonitor = if (realtimeConfig.enableMessageSubscribtion) {
             context.commonFactory.messageRouterMessageGroupBatch.subscribe({ _, batch ->
+                val exceptionList = mutableListOf<Throwable>()
                 batch.groupsList.forEach { messageGroup ->
                     messageGroup.messagesList.forEach { anyMessage ->
-                        when (anyMessage.kindCase) {
-                            MESSAGE -> processor.handle(context.processorEventId, anyMessage.message)
-                            RAW_MESSAGE -> processor.handle(context.processorEventId, anyMessage.rawMessage)
-                            else -> error("Unsupported message kind: ${anyMessage.kindCase}")
+                        runCatching {
+                            when (anyMessage.kindCase) {
+                                MESSAGE -> processor.handle(context.processorEventId, anyMessage.message)
+                                RAW_MESSAGE -> processor.handle(context.processorEventId, anyMessage.rawMessage)
+                                else -> error("Unsupported message kind: ${anyMessage.kindCase}")
+                            }
+                        }.onFailure { e ->
+                            exceptionList.add(e)
+                            reportHandleMessageError(anyMessage.id, e)
                         }
                     }
                 }
+                checkAndThrow(exceptionList)
             }, IN_ATTRIBUTE)
         } else { EMPTY_MONITOR }
 
         eventMonitor = if (realtimeConfig.enableEventSubscribtion) {
             context.commonFactory.eventBatchRouter.subscribe({ _, batch ->
+                val exceptionList = mutableListOf<Throwable>()
                 batch.eventsList.forEach { event ->
-                    processor.handle(context.processorEventId, event)
+                    runCatching {
+                        processor.handle(context.processorEventId, event)
+                    }.onFailure { e ->
+                        exceptionList.add(e)
+                        reportHandleEventError(event.id, e)
+                    }
                 }
+                checkAndThrow(exceptionList)
             }, IN_ATTRIBUTE)
         } else { EMPTY_MONITOR }
         readiness.enable()
+    }
+
+    private fun checkAndThrow(exceptionList: MutableList<Throwable>) {
+        if (exceptionList.isNotEmpty()) {
+            throw ProcessorException("Handling failure").apply {
+                exceptionList.forEach(this::addSuppressed)
+            }
+        }
     }
 
     override fun close() {
@@ -82,11 +111,37 @@ class RealtimeStrategy(context: Context): AbstractStrategy(context) {
             K_LOGGER.error(e) { "Closing ${processor::class.java.simpleName} failure" }
         }
     }
+    private fun reportHandleMessageError(messageId: MessageID, e: Throwable) {
+        createEvent(e)
+            .type(MESSAGE_PROCESSING_FAILURE_EVENT_TYPE)
+            .messageID(messageId)
+            .toProto(context.processorEventId)
+            .also(context.eventBatcher::onEvent)
+    }
+    private fun reportHandleEventError(eventID: EventID, e: Throwable) {
+        createEvent(e)
+            .type(EVENT_PROCESSING_FAILURE_EVENT_TYPE)
+            .bodyData(Reference(eventID.logId))
+            .toProto(context.processorEventId)
+            .also(context.eventBatcher::onEvent)
+    }
+    private fun createEvent(e: Throwable): Event = Event.start()
+        .name("Handle data failure ${e.message}")
+        .status(Event.Status.FAILED)
+        .exception(e, true)
     companion object {
         private val K_LOGGER = KotlinLogging.logger {}
+        private const val EVENT_PROCESSING_FAILURE_EVENT_TYPE: String = "Event processing failure"
+        private const val MESSAGE_PROCESSING_FAILURE_EVENT_TYPE: String = "Message processing failure"
 
         internal const val IN_ATTRIBUTE = "in"
 
         private val EMPTY_MONITOR = SubscriberMonitor { }
+
+        private data class Reference(
+            val type: String = "reference",
+            val eventId: String? = null,
+            val messageId: String? = null,
+        ): IBodyData
     }
 }

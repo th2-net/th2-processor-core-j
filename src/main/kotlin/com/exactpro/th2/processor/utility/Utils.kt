@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Exactpro (Exactpro Systems Limited)
+ * Copyright 2022-2023 Exactpro (Exactpro Systems Limited)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,10 +16,12 @@
 
 package com.exactpro.th2.processor.utility
 
+import com.exactpro.th2.common.event.Event
 import com.exactpro.th2.common.grpc.EventBatchOrBuilder
 import com.exactpro.th2.common.grpc.EventOrBuilder
 import com.exactpro.th2.common.grpc.EventStatus
 import com.exactpro.th2.common.utils.message.logId
+import com.exactpro.th2.processor.core.HandleMessageException
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.dataformat.cbor.databind.CBORMapper
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
@@ -60,5 +62,11 @@ fun <K, V> Map<K, Set<V>>.check(key: K, value: V, message: () -> String) {
     get(key).also { set ->
         check(set != null && (set.isEmpty() || set.contains(value)), message)
     }
+}
 
+fun Event.supplement(e: Exception): Event {
+    if (e is HandleMessageException) {
+        e.messageIds.forEach(this::messageID)
+    }
+    return this
 }

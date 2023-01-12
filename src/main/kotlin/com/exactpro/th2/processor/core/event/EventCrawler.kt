@@ -85,17 +85,15 @@ class EventCrawler(
     }
     private fun reportResponse(response: EventLoadedStatistic, intervalEventId: EventID) {
         K_LOGGER.info { "Request ${response.toJson()}" }
-        eventBatcher.onEvent(
-            Event.start()
-                .name("Requested events")
-                .type(EVENT_TYPE_REQUEST_TO_DATA_PROVIDER)
-                .bodyData(Table().apply {
-                    type = "Event statistic"
-                    fields = response.statList.map(::toRow)
-                })
-                .toProto(intervalEventId)
-                .also(eventBatcher::onEvent)
-        )
+        Event.start()
+            .name("Requested events")
+            .type(EVENT_TYPE_REQUEST_TO_DATA_PROVIDER)
+            .bodyData(Table().apply {
+                type = "Event statistic"
+                fields = response.statList.map(::toRow)
+            })
+            .toProto(intervalEventId)
+            .also(eventBatcher::onEvent)
     }
     companion object {
         private val K_LOGGER = KotlinLogging.logger {}
