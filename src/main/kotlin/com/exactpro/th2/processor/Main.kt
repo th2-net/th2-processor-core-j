@@ -46,8 +46,13 @@ fun main(args: Array<String>) {
             }
         }
 
-        Application(commonFactory)
-            .use(Application::run)
+        Application(commonFactory).apply {
+            resources.add {
+                K_LOGGER.info { "Closing application" }
+                close()
+            }
+            run()
+        }
     } catch (e: InterruptedException) {
         K_LOGGER.error(e) { "Message handling interrupted" }
     } catch (e: Throwable) {
@@ -56,4 +61,3 @@ fun main(args: Array<String>) {
         exitProcess(1)
     }
 }
-

@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Exactpro (Exactpro Systems Limited)
+ * Copyright 2022-2023 Exactpro (Exactpro Systems Limited)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -25,7 +25,7 @@ import com.exactpro.th2.common.message.toJson
 import com.exactpro.th2.dataprovider.lw.grpc.EventLoadedStatistic
 import com.exactpro.th2.dataprovider.lw.grpc.EventLoadedStatistic.ScopeStat
 import com.exactpro.th2.dataprovider.lw.grpc.EventQueueSearchRequest
-import com.exactpro.th2.dataprovider.lw.grpc.QueueDataProviderService
+import com.exactpro.th2.processor.api.IProcessor
 import com.exactpro.th2.processor.core.Context
 import com.exactpro.th2.processor.core.Crawler
 import com.exactpro.th2.processor.core.event.controller.EventController
@@ -34,17 +34,19 @@ import mu.KotlinLogging
 
 class EventCrawler(
     context: Context,
+    processor: IProcessor,
 ) : Crawler<EventBatch>(
+    context.commonFactory,
+    context.commonFactory.eventBatchRouter,
     context.eventBatcher,
+    processor,
     context.processorEventId,
-    context.eventRouter,
     context.configuration,
-    context.processor,
 ) {
-    private val dataProvider: QueueDataProviderService = context.dataProvider
-
     private val bookToScopes = requireNotNull(
-        requireNotNull(context.configuration.events).bookToScopes
+        requireNotNull(crawlerConfiguration.events) {
+            "The `crawler.events` configuration can not be null"
+        }.bookToScopes
     ).also { map ->
         check(map.isNotEmpty()) {
             "Incorrect configuration parameters: the `bookToScopes` option is empty"
@@ -83,17 +85,15 @@ class EventCrawler(
     }
     private fun reportResponse(response: EventLoadedStatistic, intervalEventId: EventID) {
         K_LOGGER.info { "Request ${response.toJson()}" }
-        eventBatcher.onEvent(
-            Event.start()
-                .name("Requested events")
-                .type(EVENT_TYPE_REQUEST_TO_DATA_PROVIDER)
-                .bodyData(Table().apply {
-                    type = "Event statistic"
-                    fields = response.statList.map(::toRow)
-                })
-                .toProto(intervalEventId)
-                .also(eventBatcher::onEvent)
-        )
+        Event.start()
+            .name("Requested events")
+            .type(EVENT_TYPE_REQUEST_TO_DATA_PROVIDER)
+            .bodyData(Table().apply {
+                type = "Event statistic"
+                fields = response.statList.map(::toRow)
+            })
+            .toProto(intervalEventId)
+            .also(eventBatcher::onEvent)
     }
     companion object {
         private val K_LOGGER = KotlinLogging.logger {}

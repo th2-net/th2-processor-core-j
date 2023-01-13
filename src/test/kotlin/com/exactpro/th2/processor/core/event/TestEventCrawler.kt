@@ -19,6 +19,8 @@ package com.exactpro.th2.processor.core.event
 import com.exactpro.th2.common.grpc.EventBatch
 import com.exactpro.th2.common.grpc.EventID
 import com.exactpro.th2.common.message.toTimestamp
+import com.exactpro.th2.common.schema.factory.CommonFactory
+import com.exactpro.th2.common.schema.grpc.router.GrpcRouter
 import com.exactpro.th2.common.schema.message.ExclusiveSubscriberMonitor
 import com.exactpro.th2.common.schema.message.MessageRouter
 import com.exactpro.th2.common.utils.event.EventBatcher
@@ -27,10 +29,12 @@ import com.exactpro.th2.dataprovider.lw.grpc.QueueDataProviderService
 import com.exactpro.th2.processor.api.IProcessor
 import com.exactpro.th2.processor.core.Context
 import com.exactpro.th2.processor.core.configuration.Configuration
+import com.exactpro.th2.processor.core.configuration.CrawlerConfiguration
 import com.exactpro.th2.processor.core.configuration.EventConfiguration
 import org.junit.jupiter.api.Test
 import org.mockito.kotlin.any
 import org.mockito.kotlin.argThat
+import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.spy
 import org.mockito.kotlin.times
@@ -42,6 +46,9 @@ class TestEventCrawler {
     private val dataProvider = mock<QueueDataProviderService> {
         on { searchEvents(any()) }.thenReturn(EventLoadedStatistic.getDefaultInstance())
     }
+    private val grpcRouter = mock<GrpcRouter> {
+        on { getService(eq(QueueDataProviderService::class.java)) }.thenReturn(dataProvider)
+    }
     private val eventBatcher = mock<EventBatcher> {  }
     private val monitor = mock<ExclusiveSubscriberMonitor> {
         on { queue }.thenReturn(EXCLUSIVE_QUEUE)
@@ -50,25 +57,30 @@ class TestEventCrawler {
         on { subscribeExclusive(any()) }.thenReturn(monitor)
     }
     private val processor = mock<IProcessor> {  }
-    private val configuration = spy(Configuration(
+    private val crawlerConfiguration = spy(CrawlerConfiguration(
         events = EventConfiguration(mapOf(BOOK_NAME to setOf())),
         from = FROM.toString(),
         to = TO.toString(),
+    ))
+    private val configuration = Configuration(
+        crawler = crawlerConfiguration,
         bookName = "test_book_name",
         processorSettings = mock {  }
-    ))
+    )
+    private val commonFactory = mock<CommonFactory> {
+        on { eventBatchRouter }.thenReturn(eventRouter)
+        on { grpcRouter }.thenReturn(grpcRouter)
+    }
     private val context = mock<Context> {
-        on { dataProvider }.thenReturn(dataProvider)
+        on { commonFactory }.thenReturn(commonFactory)
         on { eventBatcher }.thenReturn(eventBatcher)
-        on { eventRouter }.thenReturn(eventRouter)
-        on { processor }.thenReturn(processor)
         on { configuration }.thenReturn(configuration)
         on { processorEventId }.thenReturn(PROCESSOR_EVENT_ID)
     }
 
     @Test
     fun `test response`() {
-        val crawler = EventCrawler(context)
+        val crawler = EventCrawler(context, processor)
         crawler.processInterval(FROM.toTimestamp(), TO.toTimestamp(), INTERVAL_EVENT_ID)
 
         verify(dataProvider, times(1)).searchEvents(argThat { argument ->

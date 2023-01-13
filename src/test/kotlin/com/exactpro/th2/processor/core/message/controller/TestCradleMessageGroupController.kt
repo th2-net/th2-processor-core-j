@@ -34,7 +34,7 @@ import com.exactpro.th2.processor.SESSION_ALIAS
 import com.exactpro.th2.processor.UNKNOWN_BOOK
 import com.exactpro.th2.processor.UNKNOWN_GROUP
 import com.exactpro.th2.processor.api.IProcessor
-import com.exactpro.th2.processor.core.message.CrawlerHandleMessageException
+import com.exactpro.th2.processor.core.HandleMessageException
 import com.exactpro.th2.processor.message
 import com.exactpro.th2.processor.rawMessage
 import org.junit.jupiter.api.assertDoesNotThrow
@@ -70,7 +70,7 @@ internal class TestCradleMessageGroupController {
     @ParameterizedTest
     @MethodSource("parsedOnly")
     fun `put raw message actual value`(bookToGroup: Map<String, Set<String>>, kinds: Set<KindCase>) {
-        assertFailsWith<CrawlerHandleMessageException>("Put incorrect message kind") {
+        assertFailsWith<HandleMessageException>("Put incorrect message kind") {
             createController(bookToGroup, kinds).actual(MessageGroupBatch.newBuilder().apply {
                 addGroupsBuilder().apply {
                     message(
@@ -88,7 +88,7 @@ internal class TestCradleMessageGroupController {
     @ParameterizedTest
     @MethodSource("rawOnly")
     fun `put parsed message actual value`(bookToGroup: Map<String, Set<String>>, kinds: Set<KindCase>) {
-        assertFailsWith<CrawlerHandleMessageException>("Put incorrect message kind") {
+        assertFailsWith<HandleMessageException>("Put incorrect message kind") {
             createController(bookToGroup, kinds).actual(MessageGroupBatch.newBuilder().apply {
                 addGroupsBuilder().apply {
                     message(
@@ -163,7 +163,7 @@ internal class TestCradleMessageGroupController {
     @MethodSource("allCombinations")
     fun `receive unknown book`(bookToGroup: Map<String, Set<String>>, kinds: Set<KindCase>) {
         val controller = createController(bookToGroup, kinds)
-        assertFailsWith<CrawlerHandleMessageException>("Check message with unknown book") {
+        assertFailsWith<HandleMessageException>("Check message with unknown book") {
             controller.actual(MessageGroupBatch.newBuilder().apply {
                 kinds.forEach { kind ->
                     addGroupsBuilder().apply {
@@ -193,7 +193,7 @@ internal class TestCradleMessageGroupController {
     @MethodSource("bookAndGroupOnly")
     fun `receive unknown group (book and group only)`(bookToGroup: Map<String, Set<String>>, kinds: Set<KindCase>) {
         val controller = createController(bookToGroup, kinds)
-        assertFailsWith<CrawlerHandleMessageException>("Check message with unknown group") {
+        assertFailsWith<HandleMessageException>("Check message with unknown group") {
             controller.actual(MessageGroupBatch.newBuilder().apply {
                 kinds.forEach { kind ->
                     addGroupsBuilder().apply {
@@ -256,7 +256,7 @@ internal class TestCradleMessageGroupController {
             RAW_MESSAGE to { handle(eq(INTERVAL_EVENT_ID), any<RawMessage>()) },
         )
 
-        assertFailsWith<CrawlerHandleMessageException>("Check message before interval start") {
+        assertFailsWith<HandleMessageException>("Check message before interval start") {
             controller.actual(MessageGroupBatch.newBuilder().apply {
                 kinds.forEach { kind ->
                     addGroupsBuilder().apply {
@@ -273,7 +273,7 @@ internal class TestCradleMessageGroupController {
         }
         verify(processor, never().description("Message before interval start"), kinds, kindToCall)
 
-        assertFailsWith<CrawlerHandleMessageException>("Check message with end interval timestamp") {
+        assertFailsWith<HandleMessageException>("Check message with end interval timestamp") {
             controller.actual(MessageGroupBatch.newBuilder().apply {
                 kinds.forEach { kind ->
                     addGroupsBuilder().apply {
@@ -305,7 +305,7 @@ internal class TestCradleMessageGroupController {
     fun `receive uncompleted decoding message group`(bookToGroup: Map<String, Set<String>>, kinds: Set<KindCase>) {
         val controller = createController(bookToGroup, kinds)
 
-        assertFailsWith<CrawlerHandleMessageException>("Check uncompleted decoding message group") {
+        assertFailsWith<HandleMessageException>("Check uncompleted decoding message group") {
             controller.actual(MessageGroupBatch.newBuilder().apply {
                 addGroupsBuilder().apply {
                     message(

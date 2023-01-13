@@ -22,6 +22,8 @@ import com.exactpro.th2.common.grpc.AnyMessage.KindCase.RAW_MESSAGE
 import com.exactpro.th2.common.grpc.EventID
 import com.exactpro.th2.common.grpc.MessageGroupBatch
 import com.exactpro.th2.common.message.toTimestamp
+import com.exactpro.th2.common.schema.factory.CommonFactory
+import com.exactpro.th2.common.schema.grpc.router.GrpcRouter
 import com.exactpro.th2.common.schema.message.ExclusiveSubscriberMonitor
 import com.exactpro.th2.common.schema.message.MessageRouter
 import com.exactpro.th2.common.utils.event.EventBatcher
@@ -30,10 +32,12 @@ import com.exactpro.th2.dataprovider.lw.grpc.QueueDataProviderService
 import com.exactpro.th2.processor.api.IProcessor
 import com.exactpro.th2.processor.core.Context
 import com.exactpro.th2.processor.core.configuration.Configuration
+import com.exactpro.th2.processor.core.configuration.CrawlerConfiguration
 import com.exactpro.th2.processor.core.configuration.MessageConfiguration
 import org.junit.jupiter.api.Test
 import org.mockito.kotlin.any
 import org.mockito.kotlin.argThat
+import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.spy
 import org.mockito.kotlin.times
@@ -46,6 +50,9 @@ class TestCradleMessageGroupCrawler {
     private val dataProvider = mock<QueueDataProviderService> {
         on { searchMessageGroups(any()) }.thenReturn(MessageLoadedStatistic.getDefaultInstance())
     }
+    private val grpcRouter = mock<GrpcRouter> {
+        on { getService(eq(QueueDataProviderService::class.java)) }.thenReturn(dataProvider)
+    }
     private val eventBatcher = mock<EventBatcher> {  }
     private val monitor = mock<ExclusiveSubscriberMonitor> {
         on { queue }.thenReturn(EXCLUSIVE_QUEUE)
@@ -54,17 +61,22 @@ class TestCradleMessageGroupCrawler {
         on { subscribeExclusive(any()) }.thenReturn(monitor)
     }
     private val processor = mock<IProcessor> {  }
-    private val configuration = spy(Configuration(
+    private val crawlerConfiguration = spy(CrawlerConfiguration(
         from = FROM.toString(),
         to = TO.toString(),
-        bookName = "test_book_name",
-        processorSettings = mock { }
+    ))
+    private val configuration = Configuration(
+        crawler = crawlerConfiguration,
+        processorSettings = mock {  }
+    )
+    private val commonFactory = mock<CommonFactory> {
+        on { messageRouterMessageGroupBatch }.thenReturn(messageRouter)
+        on { grpcRouter }.thenReturn(grpcRouter)
+    }
     ))
     private val context = mock<Context> {
-        on { dataProvider }.thenReturn(dataProvider)
+        on { commonFactory }.thenReturn(commonFactory)
         on { eventBatcher }.thenReturn(eventBatcher)
-        on { messageRouter }.thenReturn(messageRouter)
-        on { processor }.thenReturn(processor)
         on { configuration }.thenReturn(configuration)
         on { processorEventId }.thenReturn(PROCESSOR_EVENT_ID)
     }
@@ -100,11 +112,11 @@ class TestCradleMessageGroupCrawler {
     }
 
     private fun createCrawler(kinds: Set<AnyMessage.KindCase>): CradleMessageGroupCrawler {
-        whenever(configuration.messages).thenReturn(MessageConfiguration(
+        whenever(crawlerConfiguration.messages).thenReturn(MessageConfiguration(
             kinds,
             mapOf(BOOK_NAME to setOf())
         ))
-        return CradleMessageGroupCrawler(context)
+        return CradleMessageGroupCrawler(context, processor)
     }
 
     companion object {

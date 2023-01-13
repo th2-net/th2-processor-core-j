@@ -19,12 +19,16 @@ package com.exactpro.th2.processor.core
 import com.exactpro.th2.common.event.Event
 import com.exactpro.th2.common.event.Event.Status.FAILED
 import com.exactpro.th2.common.grpc.EventID
+import com.exactpro.th2.common.schema.factory.CommonFactory
 import com.exactpro.th2.common.schema.message.ExclusiveSubscriberMonitor
 import com.exactpro.th2.common.schema.message.MessageRouter
 import com.exactpro.th2.common.utils.event.EventBatcher
 import com.exactpro.th2.common.utils.message.toProtoDuration
+import com.exactpro.th2.dataprovider.lw.grpc.QueueDataProviderService
 import com.exactpro.th2.processor.api.IProcessor
 import com.exactpro.th2.processor.core.configuration.Configuration
+import com.exactpro.th2.processor.core.configuration.CrawlerConfiguration
+import com.exactpro.th2.processor.utility.supplement
 import com.google.protobuf.Message
 import com.google.protobuf.Timestamp
 import com.google.protobuf.util.Timestamps.toString
@@ -34,27 +38,33 @@ import java.time.Duration
 typealias ProtoDuration = com.google.protobuf.Duration
 
 abstract class Crawler<T : Message>(
+    commonFactory: CommonFactory,
+    router: MessageRouter<T>,
     protected val eventBatcher: EventBatcher,
+    protected val processor: IProcessor,
     processorEventID: EventID,
-    messageRouter: MessageRouter<T>,
-    configuration: Configuration,
-    protected val processor: IProcessor
+    configuration: Configuration
 ) : AutoCloseable {
 
     private val monitor: ExclusiveSubscriberMonitor
     private val dummyController: Controller<T> = DummyController(processorEventID)
 
-    protected val syncInterval: ProtoDuration = Duration.parse(configuration.syncInterval).toProtoDuration()
+    protected val dataProvider: QueueDataProviderService = commonFactory.grpcRouter
+        .getService(QueueDataProviderService::class.java)
+    protected val crawlerConfiguration: CrawlerConfiguration = requireNotNull(configuration.crawler) {
+        "The `crawler` configuration can not be null"
+    }
+    protected val syncInterval: ProtoDuration = Duration.parse(crawlerConfiguration.syncInterval).toProtoDuration()
     protected val queue: String
-    protected val awaitTimeout = configuration.awaitTimeout
+    protected val awaitTimeout = crawlerConfiguration.awaitTimeout
 
-    protected val awaitUnit = configuration.awaitUnit
+    protected val awaitUnit = crawlerConfiguration.awaitUnit
     @Volatile
     protected var controller: Controller<T> = dummyController
 
     init {
         // FIXME: if connection is be broken, subscribtion doesn't recover (exclusive queue specific)
-        monitor = messageRouter.subscribeExclusive { _, batch ->
+        monitor = router.subscribeExclusive { _, batch ->
             try {
                 controller.actual(batch)
             } catch (e: Exception) {
@@ -76,32 +86,27 @@ abstract class Crawler<T : Message>(
         }
     }
 
-    protected open fun Event.supplement(e: Exception): Event = this
     private fun reportHandleError(intervalEventId: EventID, e: Exception) {
         K_LOGGER.error(e) { "Handle data failure" }
-        eventBatcher.onEvent(
-            Event.start()
-                .name("Handle data failure ${e.message}")
-                .type(EVENT_TYPE_PROCESS_INTERVAL)
-                .status(FAILED)
-                .exception(e, true)
-                .supplement(e)
-                .toProto(intervalEventId)
-                .also(eventBatcher::onEvent)
-        )
+        Event.start()
+            .name("Handle data failure ${e.message}")
+            .type(EVENT_TYPE_PROCESS_INTERVAL)
+            .status(FAILED)
+            .exception(e, true)
+            .supplement(e)
+            .toProto(intervalEventId)
+            .also(eventBatcher::onEvent)
     }
     private fun reportProcessError(intervalEventId: EventID, from: Timestamp, to: Timestamp, e: Exception) {
         K_LOGGER.error(e) { "Process interval failure [${toString(from)} - ${toString(to)})" }
-        eventBatcher.onEvent(
-            Event.start()
-                .name("Process interval failure ${e.message}")
-                .type(EVENT_TYPE_PROCESS_INTERVAL)
-                .status(FAILED)
-                .exception(e, true)
-                .supplement(e)
-                .toProto(intervalEventId)
-                .also(eventBatcher::onEvent)
-        )
+        Event.start()
+            .name("Process interval failure ${e.message}")
+            .type(EVENT_TYPE_PROCESS_INTERVAL)
+            .status(FAILED)
+            .exception(e, true)
+            .supplement(e)
+            .toProto(intervalEventId)
+            .also(eventBatcher::onEvent)
     }
 
     override fun close() {

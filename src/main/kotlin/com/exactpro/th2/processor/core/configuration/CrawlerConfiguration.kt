@@ -1,5 +1,5 @@
 /*
- *  Copyright 2022-2023 Exactpro (Exactpro Systems Limited)
+ *  Copyright 2023 Exactpro (Exactpro Systems Limited)
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,19 +16,17 @@
 
 package com.exactpro.th2.processor.core.configuration
 
-import com.exactpro.th2.processor.api.IProcessorSettings
+import java.util.concurrent.TimeUnit
 
-class Configuration @JvmOverloads constructor(
-    val realtime: RealtimeConfiguration? = null,
-    val crawler: CrawlerConfiguration? = null,
+class CrawlerConfiguration @JvmOverloads constructor(
+    val messages: MessageConfiguration? = null,
+    val events: EventConfiguration? = null,
 
-    /**
-     * Name of th2 session alias for storing/restoring state. th2 box name will be used if the value is blank.
-     */
-    val stateSessionAlias: String = "",
-    val enableStoreState: Boolean = false,
+    val to: String? = null,
+    val from: String,
+    val intervalLength: String = "PT10M",
+    val syncInterval: String = "PT10M",
 
-    val bookName: String,
-
-    val processorSettings: IProcessorSettings
+    val awaitTimeout: Long = 10,
+    val awaitUnit: TimeUnit = TimeUnit.SECONDS,
 )

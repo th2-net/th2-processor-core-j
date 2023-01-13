@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Exactpro (Exactpro Systems Limited)
+ * Copyright 2022-2023 Exactpro (Exactpro Systems Limited)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,13 +14,12 @@
  * limitations under the License.
  */
 
-package com.exactpro.th2.processor.core.message
+package com.exactpro.th2.processor.core
 
 import com.exactpro.th2.common.grpc.MessageID
-import com.exactpro.th2.processor.core.CrawlerException
 
 @Suppress("unused")
-open class CrawlerHandleMessageException : CrawlerException {
+open class HandleMessageException : ProcessorException {
     val messageIds: List<MessageID>
 
     constructor(messageIds: List<MessageID>) : super() { this.messageIds = messageIds }
