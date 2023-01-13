@@ -296,7 +296,7 @@ internal class TestDataProviderStateManager {
         }
 
         val storage = DataProviderStateManager(
-            onEvent = { },
+            onEvent = { event -> eventBatcher.onEvent(event) },
             loadRawMessages = { bookName, sessionAlias, timestamp -> listOf<MessageSearchResponse>().iterator() },
             storeRawMessage = {  },
             STATE_SESSION_ALIAS,
@@ -313,14 +313,14 @@ internal class TestDataProviderStateManager {
         val data = ByteArray(MIN_STATE_SIZE)
 
         val storage = DataProviderStateManager(
-            onEvent = { },
+            onEvent = { event -> eventBatcher.onEvent(event) },
             loadRawMessages = { bookName, sessionAlias, timestamp -> listOf<MessageSearchResponse>().iterator() },
-            storeRawMessage = {  },
+            storeRawMessage = { batch -> messageRouter.send(batch) },
             STATE_SESSION_ALIAS,
             MIN_STATE_SIZE + METADATA_SIZE
         )
         storage.store(EVENT_ID, data, STATE_SESSION_ALIAS, BOOK_NAME)
-        verify(messageRouter, times(1).description("State parts")).sendAll(any())
+        verify(messageRouter, times(1).description("State parts")).send(any())
         verify(eventBatcher, times(1).description("Publish events")).onEvent(any())
     }
 
@@ -331,14 +331,14 @@ internal class TestDataProviderStateManager {
         val data = ByteArray(parts * MIN_STATE_SIZE).apply(Random::nextBytes)
 
         val storage = DataProviderStateManager(
-            onEvent = { },
+            onEvent = { event -> eventBatcher.onEvent(event) },
             loadRawMessages = { bookName, sessionAlias, timestamp -> listOf<MessageSearchResponse>().iterator() },
-            storeRawMessage = {  },
+            storeRawMessage = { batch -> messageRouter.send(batch) },
             STATE_SESSION_ALIAS,
             MIN_STATE_SIZE + METADATA_SIZE
         )
         storage.store(EVENT_ID, data, STATE_SESSION_ALIAS, BOOK_NAME)
-        verify(messageRouter, times(parts).description("State parts")).sendAll(any())
+        verify(messageRouter, times(parts).description("State parts")).send(any())
         verify(eventBatcher, times(1).description("Publish events")).onEvent(any())
     }
 
@@ -366,9 +366,9 @@ internal class TestDataProviderStateManager {
             }
         }
         val storage = DataProviderStateManager(
-            onEvent = { },
+            onEvent = { event -> eventBatcher.onEvent(event) },
             loadRawMessages = { bookName, sessionAlias, timestamp -> listOf<MessageSearchResponse>().iterator() },
-            storeRawMessage = {  },
+            storeRawMessage = { batch -> messageRouter.send(batch) },
             STATE_SESSION_ALIAS,
             MIN_STATE_SIZE + METADATA_SIZE
         )

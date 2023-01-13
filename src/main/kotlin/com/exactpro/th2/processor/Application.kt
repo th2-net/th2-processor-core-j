@@ -17,19 +17,19 @@
 package com.exactpro.th2.processor
 
 import com.exactpro.th2.Service
-import com.exactpro.th2.common.grpc.EventBatch
-import com.exactpro.th2.common.grpc.EventID
+import com.exactpro.th2.common.grpc.*
+import com.exactpro.th2.common.message.toJson
 import com.exactpro.th2.common.metrics.registerLiveness
 import com.exactpro.th2.common.schema.factory.CommonFactory
 import com.exactpro.th2.common.schema.message.MessageRouter
 import com.exactpro.th2.common.utils.event.EventBatcher
+import com.exactpro.th2.common.utils.message.toTimestamp
 import com.exactpro.th2.common.utils.state.StateManager
-import com.exactpro.th2.dataprovider.lw.grpc.DataProviderService
+import com.exactpro.th2.dataprovider.lw.grpc.*
 import com.exactpro.th2.processor.api.IProcessorFactory
 import com.exactpro.th2.processor.core.Context
 import com.exactpro.th2.processor.core.configuration.Configuration
-import com.exactpro.th2.processor.core.state.DataProviderStateStorage
-import com.exactpro.th2.processor.core.state.IStateStorage
+import com.exactpro.th2.processor.core.state.DataProviderStateManager
 import com.exactpro.th2.processor.strategy.AbstractStrategy
 import com.exactpro.th2.processor.strategy.CrawlerStrategy
 import com.exactpro.th2.processor.strategy.RealtimeStrategy
@@ -42,6 +42,7 @@ import com.google.common.util.concurrent.ThreadFactoryBuilder
 import com.google.protobuf.Int32Value
 import com.google.protobuf.Timestamp
 import mu.KotlinLogging
+import java.time.Instant
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
@@ -59,6 +60,7 @@ class Application(
     private val eventRouter: MessageRouter<EventBatch> = commonFactory.eventBatchRouter
     private val eventBatcher = EventBatcher(executor = scheduler, onBatch = eventRouter::sendAll)
     private val messageRouter = commonFactory.messageRouterMessageGroupBatch
+    private val dataProvider = commonFactory.grpcRouter.getService(DataProviderService::class.java) // FIXME: possibly needs to be moved somewhere
     private val rootEventId: EventID = requireNotNull(commonFactory.rootEventId) {
         "Common's root event id can not be null"
     }
@@ -66,8 +68,6 @@ class Application(
     private val processorFactory: IProcessorFactory
     private val configuration: Configuration
     private val stateManager: StateManager
-
-    private val configuration: Configuration
     private val strategy: AbstractStrategy
 
     init {
@@ -89,7 +89,7 @@ class Application(
             configuration = this
 
         stateManager = DataProviderStateManager(
-            ::onEvent,
+            { event -> eventRouter.send(EventBatch.newBuilder().addEvents(event).build()) },
             { bookName, sessionAlias, timestamp -> loadRawMessages(bookName, sessionAlias, timestamp) },
             { statePart -> storeRawMessages(statePart) },
             configuration.stateSessionAlias,
@@ -105,7 +105,7 @@ class Application(
                 commonFactory,
                 processorFactory,
                 processorEventId,
-                stateStorage,
+                stateManager,
                 eventBatcher,
                 scheduler,
                 configuration,
@@ -150,94 +150,33 @@ class Application(
         }
     }
 
-    private fun doStepAndCheck(processorEventId: EventID, from: Instant): Boolean {
-        currentFrom = from
-        currentTo = currentFrom.doStep()
-        if (currentFrom == currentTo) {
-            reportProcessingComplete(processorEventId)
-            return false
-        }
-        return true
+    private fun storeRawMessages(batch: MessageGroupBatch) {
+        messageRouter.sendAll(batch)
     }
 
-    private fun reportProcessingComplete(processorEventId: EventID) = Event.start()
-        .name("Whole time range is processed [${configuration.from} - ${configuration.to})")
-        .type(EVENT_TYPE_PROCESS_INTERVAL)
-        .toBatchProto(processorEventId)
-        .log(K_LOGGER)
-        .also(eventRouter::sendAll)
-
-    private fun reportStartProcessing(processorEventId: EventID) = Event.start()
-        .name("Process interval [$currentFrom - $currentTo)")
-        .type(EVENT_TYPE_PROCESS_INTERVAL)
-        .toBatchProto(processorEventId)
-        .log(K_LOGGER)
-        .also(eventRouter::sendAll)
-        .run { getEvents(0).id }
-
-    private fun reportEndProcessing(intervalEventId: EventID) = Event.start()
-        .name("Complete processing")
-        .type(EVENT_TYPE_PROCESS_INTERVAL)
-        .toBatchProto(intervalEventId)
-        .log(K_LOGGER)
-        .also(eventRouter::sendAll)
-        .run { getEvents(0).id }
-
-    private fun storeState(processorEventId: EventID, crawlerState: CrawlerState) {
-        if (configuration.enableStoreState) {
-            OBJECT_MAPPER.writeValueAsBytes(crawlerState).also { rawData ->
-                stateStorage.saveState(processorEventId, rawData)
-            }
-            K_LOGGER.warn { "Store state method isn't implemented" }
-        }
+    private fun loadRawMessages(bookName: String, sessionAlias: String, timestamp: Timestamp): Iterator<MessageSearchResponse> {
+        return dataProvider.searchMessages(createSearchRequest(bookName, sessionAlias, timestamp).also {
+            K_LOGGER.info { "Request to load state ${it.toJson()}" }
+        })
     }
 
-    private fun recoverState(processorEventId: EventID): CrawlerState? {
-        if (configuration.enableStoreState) {
-            stateStorage.loadState(processorEventId)?.let { rawData ->
-                runCatching {
-                    OBJECT_MAPPER.readValue(rawData, CrawlerState::class.java)
-                }.onFailure { e ->
-                    throw IllegalStateException("State can't be decode from ${
-                        rawData.joinToString("") {
-                            it.toString(radix = 16).padStart(2, '0')
-                        }
-                    }", e
-                    )
-                }.getOrThrow()
-            }
+    private fun createSearchRequest(bookName: String, sessionAlias: String, timestamp: Timestamp = Instant.now().toTimestamp()): MessageSearchRequest =
+        requestBuilder.apply {
+            startTimestamp = timestamp
+            bookId = BookId.newBuilder().setName(bookName).build()
+            addStream(MessageStream.newBuilder().setName(sessionAlias).setDirection(DIRECTION).build())
+        }.build()
+
+    private val requestBuilder = MessageSearchRequest.newBuilder().apply {
+        searchDirection = TimeRelation.PREVIOUS
+        resultCountLimit = Int32Value.of(COUNT_LIMIT)
+        addResponseFormats(RAW_MESSAGE_RESPONSE_FORMAT)
+        bookIdBuilder.apply {
+            name = configuration.bookName
         }
-        return null
-    }
-
-    private fun createProcessor(
-        processorEventId: EventID,
-        configuration: Configuration,
-        processorState: ByteArray?
-    ): IProcessor = runCatching {
-        processorFactory.create(
-            ProcessorContext(
-                commonFactory,
-                scheduler,
-                eventBatcher,
-                processorEventId,
-                configuration.processorSettings,
-                processorState
-            )
-        )
-    }.getOrElse {
-        throw IllegalStateException("Failed to create processor instance", it)
-    }
-
-    private fun Instant.doStep(): Instant {
-        if (to == this) {
-            return this
-        }
-
-        val next = this.plus(intervalLength)
-        return when {
-            to != null && to < next -> to
-            else -> next
+        addStreamBuilder().apply {
+            name = configuration.stateSessionAlias
+            direction = Direction.SECOND
         }
     }
 

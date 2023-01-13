@@ -44,7 +44,7 @@ abstract class AbstractStrategy(
         with(context) {
             if (configuration.enableStoreState) {
                 OBJECT_MAPPER.writeValueAsBytes(state).also { rawData ->
-                    stateStorage.saveState(parentEventId, rawData)
+                    stateManager.store(parentEventId, rawData, configuration.stateSessionAlias, configuration.bookName)
                 }
             }
         }
@@ -53,7 +53,7 @@ abstract class AbstractStrategy(
     protected fun <T> recoverState(stateClass: Class<T>): T? {
         with(context) {
             if (configuration.enableStoreState) {
-                stateStorage.loadState(processorEventId)?.let { rawData ->
+                stateManager.load(processorEventId, configuration.stateSessionAlias, configuration.bookName)?.let { rawData ->
                     runCatching {
                         OBJECT_MAPPER.readValue(rawData, stateClass)
                     }.onFailure { e ->

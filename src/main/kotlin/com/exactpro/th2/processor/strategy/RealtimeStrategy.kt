@@ -105,7 +105,9 @@ class RealtimeStrategy(context: Context): AbstractStrategy(context) {
         }
         if (context.configuration.enableStoreState) {
             OBJECT_MAPPER.writeValueAsBytes(RealtimeState(processor.serializeState()))
-                .also { rawData -> context.stateStorage.saveState(context.processorEventId, rawData) }
+                .also { rawData -> context.stateManager.store(
+                    context.processorEventId, rawData, context.configuration.stateSessionAlias, context.configuration.bookName
+                ) }
         }
         runCatching(processor::close).onFailure { e ->
             K_LOGGER.error(e) { "Closing ${processor::class.java.simpleName} failure" }

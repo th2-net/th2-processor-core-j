@@ -67,13 +67,14 @@ class TestCradleMessageGroupCrawler {
     ))
     private val configuration = Configuration(
         crawler = crawlerConfiguration,
+        bookName = "test_book_name",
         processorSettings = mock {  }
     )
     private val commonFactory = mock<CommonFactory> {
         on { messageRouterMessageGroupBatch }.thenReturn(messageRouter)
         on { grpcRouter }.thenReturn(grpcRouter)
     }
-    ))
+
     private val context = mock<Context> {
         on { commonFactory }.thenReturn(commonFactory)
         on { eventBatcher }.thenReturn(eventBatcher)
