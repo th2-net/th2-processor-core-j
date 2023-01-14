@@ -90,7 +90,7 @@ class Application(
 
         stateManager = DataProviderStateManager(
             { event -> eventRouter.send(EventBatch.newBuilder().addEvents(event).build()) },
-            { bookName, sessionAlias, timestamp -> loadRawMessages(bookName, sessionAlias, timestamp) },
+            { timestamp -> loadRawMessages(timestamp) },
             { statePart -> storeRawMessages(statePart) },
             configuration.stateSessionAlias,
             300000 // TODO: move it to the config
@@ -154,20 +154,18 @@ class Application(
         messageRouter.sendAll(batch)
     }
 
-    private fun loadRawMessages(bookName: String, sessionAlias: String, timestamp: Timestamp): Iterator<MessageSearchResponse> {
-        return dataProvider.searchMessages(createSearchRequest(bookName, sessionAlias, timestamp).also {
+    private fun loadRawMessages(timestamp: Timestamp): Iterator<MessageSearchResponse> {
+        return dataProvider.searchMessages(createSearchRequest(timestamp).also {
             K_LOGGER.info { "Request to load state ${it.toJson()}" }
         })
     }
 
-    private fun createSearchRequest(bookName: String, sessionAlias: String, timestamp: Timestamp = Instant.now().toTimestamp()): MessageSearchRequest =
-        requestBuilder.apply {
+    private fun createSearchRequest(timestamp: Timestamp = Instant.now().toTimestamp()): MessageSearchRequest =
+        requestBuilder().apply {
             startTimestamp = timestamp
-            bookId = BookId.newBuilder().setName(bookName).build()
-            addStream(MessageStream.newBuilder().setName(sessionAlias).setDirection(DIRECTION).build())
         }.build()
 
-    private val requestBuilder = MessageSearchRequest.newBuilder().apply {
+    private fun requestBuilder() = MessageSearchRequest.newBuilder().apply {
         searchDirection = TimeRelation.PREVIOUS
         resultCountLimit = Int32Value.of(COUNT_LIMIT)
         addResponseFormats(RAW_MESSAGE_RESPONSE_FORMAT)

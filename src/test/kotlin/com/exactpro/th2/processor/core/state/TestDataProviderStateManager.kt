@@ -57,7 +57,7 @@ internal class TestDataProviderStateManager {
         assertDoesNotThrow {
             DataProviderStateManager(
                 onEvent = { },
-                loadRawMessages = { bookName, sessionAlias, timestamp -> listOf<MessageSearchResponse>().iterator() },
+                loadRawMessages = { listOf<MessageSearchResponse>().iterator() },
                 storeRawMessage = {  },
                 STATE_SESSION_ALIAS,
                 MIN_STATE_SIZE + METADATA_SIZE
@@ -67,7 +67,7 @@ internal class TestDataProviderStateManager {
         assertFailsWith<IllegalStateException> {
             DataProviderStateManager(
                 onEvent = { },
-                loadRawMessages = { bookName, sessionAlias, timestamp -> listOf<MessageSearchResponse>().iterator() },
+                loadRawMessages = { listOf<MessageSearchResponse>().iterator() },
                 storeRawMessage = {  },
                 STATE_SESSION_ALIAS,
                 MIN_STATE_SIZE + METADATA_SIZE - 1
@@ -90,7 +90,7 @@ internal class TestDataProviderStateManager {
 
         val storage = DataProviderStateManager(
             onEvent = { },
-            loadRawMessages = { bookName, sessionAlias, timestamp -> listOf<MessageSearchResponse>().iterator() },
+            loadRawMessages = { listOf<MessageSearchResponse>().iterator() },
             storeRawMessage = {  },
             STATE_SESSION_ALIAS,
             MIN_STATE_SIZE + METADATA_SIZE
@@ -115,7 +115,7 @@ internal class TestDataProviderStateManager {
 
         val storage = DataProviderStateManager(
             onEvent = { },
-            loadRawMessages = { bookName, sessionAlias, timestamp -> listOf<MessageSearchResponse>().iterator() },
+            loadRawMessages = { listOf<MessageSearchResponse>().iterator() },
             storeRawMessage = { },
             STATE_SESSION_ALIAS,
             MIN_STATE_SIZE + METADATA_SIZE
@@ -166,7 +166,7 @@ internal class TestDataProviderStateManager {
 
         val storage = DataProviderStateManager(
                 onEvent = { },
-                loadRawMessages = { bookName, sessionAlias, timestamp -> listOf<MessageSearchResponse>().iterator() },
+                loadRawMessages = { listOf<MessageSearchResponse>().iterator() },
                 storeRawMessage = {  },
                 STATE_SESSION_ALIAS,
                 MIN_STATE_SIZE + METADATA_SIZE
@@ -215,7 +215,7 @@ internal class TestDataProviderStateManager {
 
         val storage = DataProviderStateManager(
             onEvent = { },
-            loadRawMessages = { bookName, sessionAlias, timestamp -> listOf<MessageSearchResponse>().iterator() },
+            loadRawMessages = { listOf<MessageSearchResponse>().iterator() },
             storeRawMessage = {  },
             STATE_SESSION_ALIAS,
             MIN_STATE_SIZE + METADATA_SIZE
@@ -258,7 +258,7 @@ internal class TestDataProviderStateManager {
 
         val storage = DataProviderStateManager(
             onEvent = { },
-            loadRawMessages = { bookName, sessionAlias, timestamp -> listOf<MessageSearchResponse>().iterator() },
+            loadRawMessages = { listOf<MessageSearchResponse>().iterator() },
             storeRawMessage = {  },
             STATE_SESSION_ALIAS,
             MIN_STATE_SIZE + METADATA_SIZE
@@ -297,7 +297,7 @@ internal class TestDataProviderStateManager {
 
         val storage = DataProviderStateManager(
             onEvent = { event -> eventBatcher.onEvent(event) },
-            loadRawMessages = { bookName, sessionAlias, timestamp -> listOf<MessageSearchResponse>().iterator() },
+            loadRawMessages = { listOf<MessageSearchResponse>().iterator() },
             storeRawMessage = {  },
             STATE_SESSION_ALIAS,
             MIN_STATE_SIZE + METADATA_SIZE
@@ -314,7 +314,7 @@ internal class TestDataProviderStateManager {
 
         val storage = DataProviderStateManager(
             onEvent = { event -> eventBatcher.onEvent(event) },
-            loadRawMessages = { bookName, sessionAlias, timestamp -> listOf<MessageSearchResponse>().iterator() },
+            loadRawMessages = { listOf<MessageSearchResponse>().iterator() },
             storeRawMessage = { batch -> messageRouter.send(batch) },
             STATE_SESSION_ALIAS,
             MIN_STATE_SIZE + METADATA_SIZE
@@ -332,7 +332,7 @@ internal class TestDataProviderStateManager {
 
         val storage = DataProviderStateManager(
             onEvent = { event -> eventBatcher.onEvent(event) },
-            loadRawMessages = { bookName, sessionAlias, timestamp -> listOf<MessageSearchResponse>().iterator() },
+            loadRawMessages = { listOf<MessageSearchResponse>().iterator() },
             storeRawMessage = { batch -> messageRouter.send(batch) },
             STATE_SESSION_ALIAS,
             MIN_STATE_SIZE + METADATA_SIZE
@@ -367,7 +367,7 @@ internal class TestDataProviderStateManager {
         }
         val storage = DataProviderStateManager(
             onEvent = { event -> eventBatcher.onEvent(event) },
-            loadRawMessages = { bookName, sessionAlias, timestamp -> listOf<MessageSearchResponse>().iterator() },
+            loadRawMessages = { listOf<MessageSearchResponse>().iterator() },
             storeRawMessage = { batch -> messageRouter.send(batch) },
             STATE_SESSION_ALIAS,
             MIN_STATE_SIZE + METADATA_SIZE

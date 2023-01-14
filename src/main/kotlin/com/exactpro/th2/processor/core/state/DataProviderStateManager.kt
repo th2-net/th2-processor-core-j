@@ -46,7 +46,7 @@ typealias EventBuilder = com.exactpro.th2.common.event.Event
 @NotThreadSafe
 class DataProviderStateManager(
     private val onEvent: (event: Event) -> Unit,
-    private val loadRawMessages: (bookName: String, sessionAlias: String, timestamp: Timestamp) -> Iterator<MessageSearchResponse>,
+    private val loadRawMessages: (timestamp: Timestamp) -> Iterator<MessageSearchResponse>,
     private val storeRawMessage: (statePart: MessageGroupBatch) -> Unit,
     private val stateSessionAlias: String,
     maxMessageSize: Long = METADATA_SIZE + MIN_STATE_SIZE
@@ -61,18 +61,19 @@ class DataProviderStateManager(
     private val stateSize = maxMessageSize - METADATA_SIZE
     private var sequenceCounter: Long = System.nanoTime()
 
+    // TODO: alias and bookName can be removed
     override fun load(parentEventId: EventID, stateSessionAlias: String, bookName: String): ByteArray? {
         K_LOGGER.info { "Started state loading" }
 
         val state = mutableListOf<Pair<StateType, MessageGroupResponse>>()
         sequence {
-            var iterator = loadRawMessages(bookName, stateSessionAlias, Instant.now().toTimestamp())
+            var iterator = loadRawMessages(Instant.now().toTimestamp())
 
             while (iterator.hasNext()) {
                 val message: MessageGroupResponse = iterator.next().message
                 yield(message)
                 if (!iterator.hasNext()) {
-                    iterator = loadRawMessages(bookName, stateSessionAlias, message.messageId.timestamp)
+                    iterator = loadRawMessages(message.messageId.timestamp)
                 }
             }
         }.map(::mapStateTypeToMessage)
