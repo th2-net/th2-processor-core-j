@@ -58,7 +58,7 @@ internal class TestDataProviderStateManager {
             DataProviderStateManager(
                 onEvent = { },
                 loadRawMessages = { listOf<MessageSearchResponse>().iterator() },
-                storeRawMessage = {  },
+                storeRawMessage = { batch -> DUMMY_MESSAGE_ROUTER.sendAll(batch) },
                 STATE_SESSION_ALIAS,
                 MIN_STATE_SIZE + METADATA_SIZE
             )
@@ -68,7 +68,7 @@ internal class TestDataProviderStateManager {
             DataProviderStateManager(
                 onEvent = { },
                 loadRawMessages = { listOf<MessageSearchResponse>().iterator() },
-                storeRawMessage = {  },
+                storeRawMessage = { batch -> DUMMY_MESSAGE_ROUTER.sendAll(batch) },
                 STATE_SESSION_ALIAS,
                 MIN_STATE_SIZE + METADATA_SIZE - 1
             )
@@ -91,7 +91,7 @@ internal class TestDataProviderStateManager {
         val storage = DataProviderStateManager(
             onEvent = { },
             loadRawMessages = { listOf<MessageSearchResponse>().iterator() },
-            storeRawMessage = {  },
+            storeRawMessage = { batch -> DUMMY_MESSAGE_ROUTER.sendAll(batch) },
             STATE_SESSION_ALIAS,
             MIN_STATE_SIZE + METADATA_SIZE
         )
@@ -116,7 +116,7 @@ internal class TestDataProviderStateManager {
         val storage = DataProviderStateManager(
             onEvent = { },
             loadRawMessages = { listOf<MessageSearchResponse>().iterator() },
-            storeRawMessage = { },
+            storeRawMessage = { batch -> DUMMY_MESSAGE_ROUTER.sendAll(batch) },
             STATE_SESSION_ALIAS,
             MIN_STATE_SIZE + METADATA_SIZE
         )
@@ -167,7 +167,7 @@ internal class TestDataProviderStateManager {
         val storage = DataProviderStateManager(
                 onEvent = { },
                 loadRawMessages = { listOf<MessageSearchResponse>().iterator() },
-                storeRawMessage = {  },
+                storeRawMessage = { batch -> DUMMY_MESSAGE_ROUTER.sendAll(batch) },
                 STATE_SESSION_ALIAS,
                 MIN_STATE_SIZE + METADATA_SIZE
             )
@@ -216,7 +216,7 @@ internal class TestDataProviderStateManager {
         val storage = DataProviderStateManager(
             onEvent = { },
             loadRawMessages = { listOf<MessageSearchResponse>().iterator() },
-            storeRawMessage = {  },
+            storeRawMessage = { batch -> DUMMY_MESSAGE_ROUTER.sendAll(batch) },
             STATE_SESSION_ALIAS,
             MIN_STATE_SIZE + METADATA_SIZE
         )
@@ -259,7 +259,7 @@ internal class TestDataProviderStateManager {
         val storage = DataProviderStateManager(
             onEvent = { },
             loadRawMessages = { listOf<MessageSearchResponse>().iterator() },
-            storeRawMessage = {  },
+            storeRawMessage = { batch -> DUMMY_MESSAGE_ROUTER.sendAll(batch) },
             STATE_SESSION_ALIAS,
             MIN_STATE_SIZE + METADATA_SIZE
         )
@@ -269,7 +269,7 @@ internal class TestDataProviderStateManager {
     }
 
     @Test
-    fun `load state state after skip boken state by sequence`() {
+    fun `load state state after skip broken state by sequence`() {
         val responseIterator = sequence {
             val timestamp = Instant.now().toTimestamp()
             yield(listOf(createMessageSearchResponse(END, timestamp, 12, STATE)).iterator()) // Gap
@@ -298,7 +298,7 @@ internal class TestDataProviderStateManager {
         val storage = DataProviderStateManager(
             onEvent = { event -> eventBatcher.onEvent(event) },
             loadRawMessages = { listOf<MessageSearchResponse>().iterator() },
-            storeRawMessage = {  },
+            storeRawMessage = { batch -> DUMMY_MESSAGE_ROUTER.sendAll(batch) },
             STATE_SESSION_ALIAS,
             MIN_STATE_SIZE + METADATA_SIZE
         )
@@ -315,7 +315,7 @@ internal class TestDataProviderStateManager {
         val storage = DataProviderStateManager(
             onEvent = { event -> eventBatcher.onEvent(event) },
             loadRawMessages = { listOf<MessageSearchResponse>().iterator() },
-            storeRawMessage = { batch -> messageRouter.send(batch) },
+            storeRawMessage = { batch -> DUMMY_MESSAGE_ROUTER.sendAll(batch) },
             STATE_SESSION_ALIAS,
             MIN_STATE_SIZE + METADATA_SIZE
         )
@@ -333,7 +333,7 @@ internal class TestDataProviderStateManager {
         val storage = DataProviderStateManager(
             onEvent = { event -> eventBatcher.onEvent(event) },
             loadRawMessages = { listOf<MessageSearchResponse>().iterator() },
-            storeRawMessage = { batch -> messageRouter.send(batch) },
+            storeRawMessage = { batch -> DUMMY_MESSAGE_ROUTER.sendAll(batch) },
             STATE_SESSION_ALIAS,
             MIN_STATE_SIZE + METADATA_SIZE
         )
@@ -368,7 +368,7 @@ internal class TestDataProviderStateManager {
         val storage = DataProviderStateManager(
             onEvent = { event -> eventBatcher.onEvent(event) },
             loadRawMessages = { listOf<MessageSearchResponse>().iterator() },
-            storeRawMessage = { batch -> messageRouter.send(batch) },
+            storeRawMessage = { batch -> DUMMY_MESSAGE_ROUTER.sendAll(batch) },
             STATE_SESSION_ALIAS,
             MIN_STATE_SIZE + METADATA_SIZE
         )
