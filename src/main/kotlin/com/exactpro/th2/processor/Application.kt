@@ -89,7 +89,7 @@ class Application(
             configuration = this
 
         stateManager = DataProviderStateManager(
-            { event -> eventRouter.send(EventBatch.newBuilder().addEvents(event).build()) },
+            { event -> eventBatcher.onEvent(event) },
             { timestamp -> loadRawMessages(timestamp) },
             { statePart -> storeRawMessages(statePart) },
             configuration.stateSessionAlias,
