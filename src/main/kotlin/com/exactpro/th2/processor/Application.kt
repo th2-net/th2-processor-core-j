@@ -23,7 +23,6 @@ import com.exactpro.th2.common.metrics.registerLiveness
 import com.exactpro.th2.common.schema.factory.CommonFactory
 import com.exactpro.th2.common.schema.message.MessageRouter
 import com.exactpro.th2.common.utils.event.EventBatcher
-import com.exactpro.th2.common.utils.message.toTimestamp
 import com.exactpro.th2.common.utils.state.StateManager
 import com.exactpro.th2.dataprovider.lw.grpc.*
 import com.exactpro.th2.processor.api.IProcessorFactory
@@ -34,15 +33,14 @@ import com.exactpro.th2.processor.strategy.AbstractStrategy
 import com.exactpro.th2.processor.strategy.CrawlerStrategy
 import com.exactpro.th2.processor.strategy.RealtimeStrategy
 import com.exactpro.th2.processor.utility.load
+import com.exactpro.th2.util.createSearchRequest
 import com.fasterxml.jackson.databind.DeserializationFeature
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import com.google.common.util.concurrent.ThreadFactoryBuilder
-import com.google.protobuf.Int32Value
 import com.google.protobuf.Timestamp
 import mu.KotlinLogging
-import java.time.Instant
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
@@ -155,27 +153,9 @@ class Application(
     }
 
     private fun loadRawMessages(timestamp: Timestamp): Iterator<MessageSearchResponse> {
-        return dataProvider.searchMessages(createSearchRequest(timestamp).also {
+        return dataProvider.searchMessages(createSearchRequest(configuration, timestamp).also {
             K_LOGGER.info { "Request to load state ${it.toJson()}" }
         })
-    }
-
-    private fun createSearchRequest(timestamp: Timestamp = Instant.now().toTimestamp()): MessageSearchRequest =
-        requestBuilder().apply {
-            startTimestamp = timestamp
-        }.build()
-
-    private fun requestBuilder() = MessageSearchRequest.newBuilder().apply {
-        searchDirection = TimeRelation.PREVIOUS
-        resultCountLimit = Int32Value.of(COUNT_LIMIT)
-        addResponseFormats(RAW_MESSAGE_RESPONSE_FORMAT)
-        bookIdBuilder.apply {
-            name = configuration.bookName
-        }
-        addStreamBuilder().apply {
-            name = configuration.stateSessionAlias
-            direction = Direction.SECOND
-        }
     }
 
     companion object {
@@ -184,9 +164,6 @@ class Application(
         const val EVENT_TYPE_PROCESS_INTERVAL = "Process interval"
 
         const val CONFIGURATION_ERROR_PREFIX = "Incorrect configuration parameters: "
-
-        private const val RAW_MESSAGE_RESPONSE_FORMAT = "BASE_64"
-        private const val COUNT_LIMIT = 100
 
         val DIRECTION = Direction.SECOND
 

@@ -24,6 +24,10 @@ import com.exactpro.th2.common.utils.message.id
 import com.exactpro.th2.common.utils.message.toTimestamp
 import com.exactpro.th2.dataprovider.lw.grpc.DataProviderService
 import com.exactpro.th2.dataprovider.lw.grpc.MessageSearchResponse
+import com.exactpro.th2.processor.core.configuration.Configuration
+import com.exactpro.th2.processor.core.configuration.CrawlerConfiguration
+import com.exactpro.th2.processor.core.configuration.EventConfiguration
+import com.exactpro.th2.processor.core.event.TestEventCrawler
 import com.exactpro.th2.processor.core.state.DataProviderStateManager.Companion.METADATA_SIZE
 import com.exactpro.th2.processor.core.state.DataProviderStateManager.Companion.MIN_STATE_SIZE
 import com.exactpro.th2.processor.core.state.StateType.Companion.METADATA_STATE_TYPE_PROPERTY
@@ -31,16 +35,13 @@ import com.exactpro.th2.processor.core.state.StateType.END
 import com.exactpro.th2.processor.core.state.StateType.INTERMEDIATE
 import com.exactpro.th2.processor.core.state.StateType.SINGLE
 import com.exactpro.th2.processor.core.state.StateType.START
+import com.exactpro.th2.util.createSearchRequest
 import com.google.protobuf.Timestamp
 import com.google.protobuf.UnsafeByteOperations
 import org.junit.jupiter.api.Assertions.assertArrayEquals
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertDoesNotThrow
-import org.mockito.kotlin.any
-import org.mockito.kotlin.argThat
-import org.mockito.kotlin.mock
-import org.mockito.kotlin.times
-import org.mockito.kotlin.verify
+import org.mockito.kotlin.*
 import java.time.Instant
 import kotlin.math.min
 import kotlin.random.Random
@@ -51,6 +52,19 @@ import kotlin.test.assertNull
 internal class TestDataProviderStateManager {
 
     private val eventBatcher = mock<EventBatcher> {  }
+
+    private val crawlerConfiguration = spy(
+        CrawlerConfiguration(
+        events = EventConfiguration(mapOf(BOOK_NAME to setOf())),
+        from = FROM.toString(),
+        to = TO.toString(),
+    ))
+
+    private val configuration = Configuration(
+        crawler = crawlerConfiguration,
+        bookName = "test_book_name",
+        processorSettings = mock {  }
+    )
 
     @Test
     fun `max message size argument`() {
@@ -90,7 +104,7 @@ internal class TestDataProviderStateManager {
 
         val storage = DataProviderStateManager(
             onEvent = { event -> eventBatcher.onEvent(event) },
-            loadRawMessages = { listOf<MessageSearchResponse>().iterator() },
+            loadRawMessages = { dataProvider.searchMessages(createSearchRequest(configuration)) },
             storeRawMessage = { batch -> DUMMY_MESSAGE_ROUTER.sendAll(batch) },
             STATE_SESSION_ALIAS,
             MIN_STATE_SIZE + METADATA_SIZE
@@ -115,7 +129,7 @@ internal class TestDataProviderStateManager {
 
         val storage = DataProviderStateManager(
             onEvent = {  event -> eventBatcher.onEvent(event) },
-            loadRawMessages = { listOf<MessageSearchResponse>().iterator() },
+            loadRawMessages = { dataProvider.searchMessages(createSearchRequest(configuration)) },
             storeRawMessage = { batch -> DUMMY_MESSAGE_ROUTER.sendAll(batch) },
             STATE_SESSION_ALIAS,
             MIN_STATE_SIZE + METADATA_SIZE
@@ -166,7 +180,7 @@ internal class TestDataProviderStateManager {
 
         val storage = DataProviderStateManager(
                 onEvent = {  event -> eventBatcher.onEvent(event) },
-                loadRawMessages = { listOf<MessageSearchResponse>().iterator() },
+                loadRawMessages = { dataProvider.searchMessages(createSearchRequest(configuration)) },
                 storeRawMessage = { batch -> DUMMY_MESSAGE_ROUTER.sendAll(batch) },
                 STATE_SESSION_ALIAS,
                 MIN_STATE_SIZE + METADATA_SIZE
@@ -215,7 +229,7 @@ internal class TestDataProviderStateManager {
 
         val storage = DataProviderStateManager(
             onEvent = {  event -> eventBatcher.onEvent(event) },
-            loadRawMessages = { listOf<MessageSearchResponse>().iterator() },
+            loadRawMessages = { dataProvider.searchMessages(createSearchRequest(configuration)) },
             storeRawMessage = { batch -> DUMMY_MESSAGE_ROUTER.sendAll(batch) },
             STATE_SESSION_ALIAS,
             MIN_STATE_SIZE + METADATA_SIZE
@@ -258,7 +272,7 @@ internal class TestDataProviderStateManager {
 
         val storage = DataProviderStateManager(
             onEvent = {  event -> eventBatcher.onEvent(event) },
-            loadRawMessages = { listOf<MessageSearchResponse>().iterator() },
+            loadRawMessages = { dataProvider.searchMessages(createSearchRequest(configuration)) },
             storeRawMessage = { batch -> DUMMY_MESSAGE_ROUTER.sendAll(batch) },
             STATE_SESSION_ALIAS,
             MIN_STATE_SIZE + METADATA_SIZE
@@ -297,7 +311,7 @@ internal class TestDataProviderStateManager {
 
         val storage = DataProviderStateManager(
             onEvent = { event -> eventBatcher.onEvent(event) },
-            loadRawMessages = { listOf<MessageSearchResponse>().iterator() },
+            loadRawMessages = { dataProvider.searchMessages(createSearchRequest(configuration)) },
             storeRawMessage = { batch -> DUMMY_MESSAGE_ROUTER.sendAll(batch) },
             STATE_SESSION_ALIAS,
             MIN_STATE_SIZE + METADATA_SIZE
@@ -367,8 +381,8 @@ internal class TestDataProviderStateManager {
         }
         val storage = DataProviderStateManager(
             onEvent = { event -> eventBatcher.onEvent(event) },
-            loadRawMessages = { listOf<MessageSearchResponse>().iterator() },
-            storeRawMessage = { batch -> messageRouter.send(batch) },
+            loadRawMessages = { dataProvider.searchMessages(createSearchRequest(configuration)) },
+            storeRawMessage = { batch -> messageRouter.sendAll(batch) },
             STATE_SESSION_ALIAS,
             MIN_STATE_SIZE + METADATA_SIZE
         )
@@ -419,6 +433,9 @@ internal class TestDataProviderStateManager {
     companion object {
         private const val BOOK_NAME = "book"
         private const val STATE_SESSION_ALIAS = "state"
+
+        private val FROM = Instant.now()
+        private val TO = FROM.plusSeconds(1_000)
 
         private val EVENT_ID = EventID.newBuilder().apply {
             bookName = "book"
