@@ -67,21 +67,7 @@ class CrawlerStrategy(context: Context): AbstractStrategy(context) {
                     "the ${crawlerConfig.to} `to` option is less than the ${crawlerConfig.from} `from`"
         }
 
-        intervalLength = Duration.parse(crawlerConfig.intervalLength)
-        check(!intervalLength.isNegative && !intervalLength.isZero) {
-            CONFIGURATION_ERROR_PREFIX +
-                    "the ${crawlerConfig.intervalLength} `interval length` option is negative or zero"
-        }
-        val syncInterval = Duration.parse(crawlerConfig.syncInterval)
-        check(!syncInterval.isNegative && !syncInterval.isZero) {
-            CONFIGURATION_ERROR_PREFIX +
-                    "the ${crawlerConfig.syncInterval} `synchronize interval` option is negative or zero"
-        }
-        check(syncInterval <= intervalLength) {
-            CONFIGURATION_ERROR_PREFIX +
-                    "the ${crawlerConfig.syncInterval} `synchronize interval` option is greater than the ${crawlerConfig.intervalLength} `interval length`"
-        }
-
+        intervalLength = crawlerConfig.intervalLength
         currentFrom = from
         currentTo = from.doStep()
 

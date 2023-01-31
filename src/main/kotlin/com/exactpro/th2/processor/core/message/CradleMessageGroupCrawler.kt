@@ -29,6 +29,7 @@ import com.exactpro.th2.dataprovider.lw.grpc.MessageLoadedStatistic
 import com.exactpro.th2.processor.api.IProcessor
 import com.exactpro.th2.processor.core.Context
 import com.exactpro.th2.processor.core.Crawler
+import com.exactpro.th2.processor.core.configuration.MessageKind
 import com.exactpro.th2.processor.core.message.controller.CradleMessageGroupController
 import com.google.protobuf.Timestamp
 import mu.KotlinLogging
@@ -44,9 +45,9 @@ internal class CradleMessageGroupCrawler(
     context.processorEventId,
     context.configuration
 ) {
-    private val messageKinds = requireNotNull(crawlerConfiguration.messages).messageKinds
+    private val messageKinds: Set<MessageKind> = requireNotNull(crawlerConfiguration.messages).messageKinds
 
-    private val bookToGroups = requireNotNull(
+    private val bookToGroups: Map<String, Set<String>> = requireNotNull(
         requireNotNull(crawlerConfiguration.messages) {
             "The `crawler.messages` configuration can not be null"
         }.bookToGroups
@@ -56,7 +57,7 @@ internal class CradleMessageGroupCrawler(
         }
     }
 
-    private val bookGroups = bookToGroups.map { (book, groups) ->
+    private val bookGroups: List<BookGroups> = bookToGroups.map { (book, groups) ->
         BookGroups.newBuilder().apply {
             bookIdBuilder.apply { name = book }
             groups.forEach { group ->

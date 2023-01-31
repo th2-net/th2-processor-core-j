@@ -19,6 +19,7 @@ package com.exactpro.th2.processor
 import com.exactpro.th2.Service
 import com.exactpro.th2.common.grpc.EventBatch
 import com.exactpro.th2.common.grpc.EventID
+import com.exactpro.th2.common.message.toJson
 import com.exactpro.th2.common.metrics.registerLiveness
 import com.exactpro.th2.common.schema.factory.CommonFactory
 import com.exactpro.th2.common.schema.message.MessageRouter
@@ -28,17 +29,19 @@ import com.exactpro.th2.processor.api.IProcessorFactory
 import com.exactpro.th2.processor.core.Context
 import com.exactpro.th2.processor.core.configuration.Configuration
 import com.exactpro.th2.processor.core.state.DataProviderStateStorage
+import com.exactpro.th2.processor.core.state.DummyStateStorage
 import com.exactpro.th2.processor.core.state.IStateStorage
 import com.exactpro.th2.processor.strategy.AbstractStrategy
 import com.exactpro.th2.processor.strategy.CrawlerStrategy
 import com.exactpro.th2.processor.strategy.RealtimeStrategy
 import com.exactpro.th2.processor.utility.load
-import com.fasterxml.jackson.databind.DeserializationFeature
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import com.google.common.util.concurrent.ThreadFactoryBuilder
 import mu.KotlinLogging
+import org.apache.commons.lang3.StringUtils.isNotBlank
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
@@ -71,7 +74,7 @@ class Application(
 
         val objectMapper = ObjectMapper(YAMLFactory()).apply {
             registerKotlinModule()
-            configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
+            registerModule(JavaTimeModule())
         }
         processorFactory = load<IProcessorFactory>().apply {
             registerModules(objectMapper)
@@ -84,19 +87,28 @@ class Application(
         ) {
             configuration = this
 
-            stateStorage = DataProviderStateStorage(
-                messageRouter,
-                eventBatcher,
-                commonFactory.grpcRouter.getService(DataProviderService::class.java),
-                commonFactory.boxConfiguration.bookName,
-                stateSessionAlias,
-                commonFactory.cradleConfiguration.cradleMaxMessageBatchSize
-            )
+            stateStorage = if (enableStoreState) {
+                DataProviderStateStorage(
+                    messageRouter,
+                    eventBatcher,
+                    commonFactory.grpcRouter.getService(DataProviderService::class.java),
+                    commonFactory.boxConfiguration.bookName,
+                    requireNotNull(stateSessionAlias) { "`state session alias` can be empty" },
+                    commonFactory.cradleConfiguration.cradleMaxMessageBatchSize
+                )
+            } else {
+                 DummyStateStorage()
+            }
 
             val processorEventId: EventID = processorFactory.createProcessorEvent()
                 .toBatchProto(rootEventId)
                 .also(eventRouter::sendAll)
-                .run { getEvents(0).id }
+                .run {
+                    check(eventsCount == 1) {
+                        "The ${processorFactory::class.simpleName} produce complex event for processor instead of single ${this.toJson(true)}"
+                    }
+                    getEvents(0).id
+                }
 
             val context = Context(
                 commonFactory,
@@ -159,7 +171,7 @@ class Application(
                 "Incorrect configuration parameters: process must work in one of crawler (configured: ${crawler != null}) / realtime (configured: ${realtime != null}) mode."
             }
 
-            check(!enableStoreState || stateSessionAlias.isNotBlank()) {
+            check(!enableStoreState || isNotBlank(stateSessionAlias)) {
                 "Incorrect configuration parameters: the $stateSessionAlias `state session alias` option is blank, " +
                         "the `enable store state` is $enableStoreState"
             }

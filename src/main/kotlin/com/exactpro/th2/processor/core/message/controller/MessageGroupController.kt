@@ -50,11 +50,11 @@ internal abstract class MessageGroupController(
                             updateLastProcessed(anyMessage.timestamp)
                             handle(anyMessage)
                         }.onFailure { e ->
-                            throw HandleMessageException(listOf(anyMessage.id), e)
+                            throw HandleMessageException(listOf(anyMessage.id), cause = e)
                         }
                     }
                 }.onFailure { e ->
-                    throw HandleMessageException(group.messagesList.map { it.id }, e)
+                    throw HandleMessageException(group.messagesList.map { it.id }, cause = e)
                 }
             }
         }.ifTrue(::signal)

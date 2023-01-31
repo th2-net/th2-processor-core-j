@@ -21,15 +21,15 @@ import com.exactpro.th2.common.schema.factory.CommonFactory
 import com.exactpro.th2.common.utils.event.EventBatcher
 import com.exactpro.th2.processor.api.IProcessorFactory
 import com.exactpro.th2.processor.core.configuration.Configuration
-import com.exactpro.th2.processor.core.state.DataProviderStateStorage
+import com.exactpro.th2.processor.core.state.IStateStorage
 import java.util.concurrent.ScheduledExecutorService
 
-data class Context(
+class Context(
     val commonFactory: CommonFactory,
     val processorFactory: IProcessorFactory,
 
     val processorEventId: EventID,
-    val stateStorage: DataProviderStateStorage,
+    val stateStorage: IStateStorage,
 
     val eventBatcher: EventBatcher,
     val scheduler: ScheduledExecutorService,

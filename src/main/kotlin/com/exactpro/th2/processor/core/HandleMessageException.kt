@@ -18,18 +18,15 @@ package com.exactpro.th2.processor.core
 
 import com.exactpro.th2.common.grpc.MessageID
 
-@Suppress("unused")
-open class HandleMessageException : ProcessorException {
-    val messageIds: List<MessageID>
-
-    constructor(messageIds: List<MessageID>) : super() { this.messageIds = messageIds }
-    constructor(message: String?, messageIds: List<MessageID>) : super(message) { this.messageIds = messageIds }
-    constructor(message: String?, messageIds: List<MessageID>, cause: Throwable?) : super(message, cause) { this.messageIds = messageIds }
-    constructor(messageIds: List<MessageID>, cause: Throwable?) : super(cause) { this.messageIds = messageIds }
-    constructor(message: String?, messageIds: List<MessageID>, cause: Throwable?, enableSuppression: Boolean, writableStackTrace: Boolean) : super(
-        message,
-        cause,
-        enableSuppression,
-        writableStackTrace
-    ) { this.messageIds = messageIds }
-}
+open class HandleMessageException(
+    val messageIds: List<MessageID>,
+    message: String? = null,
+    cause: Throwable? = null,
+    enableSuppression: Boolean = true,
+    writableStackTrace: Boolean = true,
+) : ProcessorException(
+    message,
+    cause,
+    enableSuppression,
+    writableStackTrace,
+)

@@ -25,7 +25,7 @@ class Configuration @JvmOverloads constructor(
     /**
      * Name of th2 session alias for storing/restoring state. th2 box name will be used if the value is blank.
      */
-    val stateSessionAlias: String = "",
+    val stateSessionAlias: String? = null,
     val enableStoreState: Boolean = false,
 
     val processorSettings: IProcessorSettings

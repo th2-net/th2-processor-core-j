@@ -43,7 +43,7 @@ class EventCrawler(
     context.processorEventId,
     context.configuration,
 ) {
-    private val bookToScopes = requireNotNull(
+    private val bookToScopes: Map<String, Set<String>> = requireNotNull(
         requireNotNull(crawlerConfiguration.events) {
             "The `crawler.events` configuration can not be null"
         }.bookToScopes
@@ -53,7 +53,7 @@ class EventCrawler(
         }
     }
 
-    private val bookScopes = bookToScopes.map { (book, scopes) ->
+    private val bookScopes: List<EventQueueSearchRequest.BookScopes> = bookToScopes.map { (book, scopes) ->
         EventQueueSearchRequest.BookScopes.newBuilder().apply {
             bookIdBuilder.apply { name = book }
             scopes.forEach { scope ->

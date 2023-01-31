@@ -1,5 +1,5 @@
 /*
- * Copyright 2022-2023 Exactpro (Exactpro Systems Limited)
+ * Copyright 2023 Exactpro (Exactpro Systems Limited)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,16 +14,17 @@
  * limitations under the License.
  */
 
-package com.exactpro.th2.processor.core
+package com.exactpro.th2.processor.core.state
 
-open class ProcessorException(
-    message: String? = null,
-    cause: Throwable? = null,
-    enableSuppression: Boolean = true,
-    writableStackTrace: Boolean = true,
-) : RuntimeException(
-    message,
-    cause,
-    enableSuppression,
-    writableStackTrace,
-)
+import com.exactpro.th2.common.grpc.EventID
+
+class DummyStateStorage: IStateStorage {
+
+    override fun loadState(parentEventId: EventID): ByteArray? {
+        throw UnsupportedOperationException()
+    }
+
+    override fun saveState(parentEventId: EventID, state: ByteArray) {
+        throw UnsupportedOperationException()
+    }
+}

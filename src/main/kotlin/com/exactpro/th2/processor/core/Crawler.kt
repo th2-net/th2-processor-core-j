@@ -54,7 +54,7 @@ abstract class Crawler<T : Message>(
     protected val crawlerConfiguration: CrawlerConfiguration = requireNotNull(configuration.crawler) {
         "The `crawler` configuration can not be null"
     }
-    protected val syncInterval: ProtoDuration = Duration.parse(crawlerConfiguration.syncInterval).toProtoDuration()
+    protected val syncInterval: ProtoDuration = crawlerConfiguration.syncInterval.toProtoDuration()
     protected val queue: String
     protected val awaitTimeout = crawlerConfiguration.awaitTimeout
 

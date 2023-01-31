@@ -93,8 +93,8 @@ class TestApplication {
     private val crawlerConfiguration = spy(CrawlerConfiguration(
         from = FROM.toString(),
         to = TO.toString(),
-        intervalLength = INTERVAL_LENGTH.toString(),
-        syncInterval = INTERVAL_LENGTH.dividedBy(2).toString(),
+        intervalLength = INTERVAL_LENGTH,
+        syncInterval = INTERVAL_LENGTH.dividedBy(2),
         awaitTimeout = 1,
     ))
     private val configuration = spy(Configuration(

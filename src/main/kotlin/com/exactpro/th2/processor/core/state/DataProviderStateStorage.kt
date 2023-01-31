@@ -39,6 +39,7 @@ import com.exactpro.th2.processor.core.state.StateType.END
 import com.exactpro.th2.processor.core.state.StateType.INTERMEDIATE
 import com.exactpro.th2.processor.core.state.StateType.SINGLE
 import com.exactpro.th2.processor.core.state.StateType.START
+import com.exactpro.th2.processor.core.state.StateType.UNKNOWN
 import com.exactpro.th2.processor.utility.log
 import com.google.protobuf.Int32Value
 import com.google.protobuf.Timestamp
@@ -119,7 +120,7 @@ class DataProviderStateStorage(
                         return ByteArray(list.size).apply { list.forEachIndexed(this::set) }
                     }
                 }
-                else -> {
+                UNKNOWN -> {
                     reportSkipState(parentEventId, state, pair)
                     state.clear()
                 }
