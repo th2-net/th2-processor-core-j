@@ -16,11 +16,11 @@
 
 package com.exactpro.th2.processor.core.message.controller
 
-import com.exactpro.th2.common.grpc.AnyMessage
 import com.exactpro.th2.common.grpc.EventID
 import com.exactpro.th2.common.grpc.MessageGroup
 import com.exactpro.th2.dataprovider.lw.grpc.MessageLoadedStatistic
 import com.exactpro.th2.processor.api.IProcessor
+import com.exactpro.th2.processor.core.configuration.MessageKind
 import com.exactpro.th2.processor.core.message.controller.state.CradleMessageGroupState
 import com.exactpro.th2.processor.core.state.StateUpdater
 import com.google.protobuf.Timestamp
@@ -30,13 +30,13 @@ internal class CradleMessageGroupController(
     intervalEventId: EventID,
     startTime: Timestamp,
     endTime: Timestamp,
-    kinds: Set<AnyMessage.KindCase>,
+    kinds: Set<MessageKind>,
     bookToGroups: Map<String, Set<String>>
 ) : MessageGroupController(
     processor,
     intervalEventId
 ) {
-    private val cradleMessageGroupState = CradleMessageGroupState(startTime, endTime, kinds, bookToGroups)
+    private val cradleMessageGroupState = CradleMessageGroupState(startTime, endTime, kinds.map(MessageKind::grpcKind).toSet(), bookToGroups)
 
     override val isStateComplete: Boolean
         get() = super.isStateComplete && cradleMessageGroupState.isStateEmpty

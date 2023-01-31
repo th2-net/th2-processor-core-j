@@ -93,7 +93,7 @@ class Application(
                 commonFactory.cradleConfiguration.cradleMaxMessageBatchSize
             )
 
-            val processorEventId = processorFactory.createProcessorEvent()
+            val processorEventId: EventID = processorFactory.createProcessorEvent()
                 .toBatchProto(rootEventId)
                 .also(eventRouter::sendAll)
                 .run { getEvents(0).id }

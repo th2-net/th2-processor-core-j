@@ -16,8 +16,6 @@
 
 package com.exactpro.th2.processor
 
-import com.exactpro.th2.common.grpc.AnyMessage.KindCase.MESSAGE
-import com.exactpro.th2.common.grpc.AnyMessage.KindCase.RAW_MESSAGE
 import com.exactpro.th2.common.grpc.Event
 import com.exactpro.th2.common.grpc.EventBatch
 import com.exactpro.th2.common.grpc.EventID
@@ -46,6 +44,8 @@ import com.exactpro.th2.processor.core.configuration.Configuration
 import com.exactpro.th2.processor.core.configuration.CrawlerConfiguration
 import com.exactpro.th2.processor.core.configuration.EventConfiguration
 import com.exactpro.th2.processor.core.configuration.MessageConfiguration
+import com.exactpro.th2.processor.core.configuration.MessageKind.MESSAGE
+import com.exactpro.th2.processor.core.configuration.MessageKind.RAW_MESSAGE
 import com.exactpro.th2.processor.core.configuration.RealtimeConfiguration
 import com.exactpro.th2.processor.strategy.RealtimeStrategy.Companion.IN_ATTRIBUTE
 import com.fasterxml.jackson.databind.ObjectMapper

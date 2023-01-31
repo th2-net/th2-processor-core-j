@@ -22,7 +22,6 @@ import com.exactpro.th2.common.utils.event.book
 import com.exactpro.th2.common.utils.event.logId
 import com.exactpro.th2.common.utils.event.scope
 import com.exactpro.th2.dataprovider.lw.grpc.EventLoadedStatistic
-import com.exactpro.th2.dataprovider.lw.grpc.EventScope
 import com.exactpro.th2.processor.core.state.StateUpdater
 import com.exactpro.th2.processor.utility.check
 import com.exactpro.th2.processor.utility.compareTo
@@ -71,11 +70,10 @@ internal class EventState(
     fun minus(eventLoadedStatistic: EventLoadedStatistic): Boolean {
         var needCheck = false
         eventLoadedStatistic.statList.forEach { scopeStat ->
-            val scope = scopeStat.scope
-            check(scope !== EventScope.getDefaultInstance()) {
+            check(scopeStat.hasScope()) {
                 "Scope statistic has not got information about scope. ${scopeStat.toJson()}"
             }
-            check(scope.name.isNotBlank()) {
+            check(scopeStat.scope.name.isNotBlank()) {
                 "Scope statistic has empty Scope name. ${scopeStat.toJson()}"
             }
 

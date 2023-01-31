@@ -19,7 +19,7 @@ package com.exactpro.th2.processor.core.message
 import com.exactpro.th2.common.event.Event
 import com.exactpro.th2.common.event.bean.IRow
 import com.exactpro.th2.common.event.bean.Table
-import com.exactpro.th2.common.grpc.AnyMessage.KindCase.RAW_MESSAGE
+import com.exactpro.th2.processor.core.configuration.MessageKind.RAW_MESSAGE
 import com.exactpro.th2.common.grpc.EventID
 import com.exactpro.th2.common.grpc.MessageGroupBatch
 import com.exactpro.th2.common.message.toJson

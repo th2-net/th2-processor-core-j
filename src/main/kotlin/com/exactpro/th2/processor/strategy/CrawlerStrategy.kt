@@ -116,7 +116,7 @@ class CrawlerStrategy(context: Context): AbstractStrategy(context) {
         }
 
         do {
-            val intervalEventId = reportStartProcessing(context.processorEventId)
+            val intervalEventId: EventID = reportStartProcessing(context.processorEventId)
             crawlers.parallelStream().forEach { crawler ->
                 crawler.processInterval(currentFrom.toTimestamp(), currentTo.toTimestamp(), intervalEventId)
             }

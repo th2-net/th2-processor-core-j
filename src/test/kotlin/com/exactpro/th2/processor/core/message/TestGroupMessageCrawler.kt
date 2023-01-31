@@ -16,9 +16,6 @@
 
 package com.exactpro.th2.processor.core.message
 
-import com.exactpro.th2.common.grpc.AnyMessage
-import com.exactpro.th2.common.grpc.AnyMessage.KindCase.MESSAGE
-import com.exactpro.th2.common.grpc.AnyMessage.KindCase.RAW_MESSAGE
 import com.exactpro.th2.common.grpc.EventID
 import com.exactpro.th2.common.grpc.MessageGroupBatch
 import com.exactpro.th2.common.message.toTimestamp
@@ -34,6 +31,9 @@ import com.exactpro.th2.processor.core.Context
 import com.exactpro.th2.processor.core.configuration.Configuration
 import com.exactpro.th2.processor.core.configuration.CrawlerConfiguration
 import com.exactpro.th2.processor.core.configuration.MessageConfiguration
+import com.exactpro.th2.processor.core.configuration.MessageKind
+import com.exactpro.th2.processor.core.configuration.MessageKind.MESSAGE
+import com.exactpro.th2.processor.core.configuration.MessageKind.RAW_MESSAGE
 import org.junit.jupiter.api.Test
 import org.mockito.kotlin.any
 import org.mockito.kotlin.argThat
@@ -110,7 +110,7 @@ class TestCradleMessageGroupCrawler {
         })
     }
 
-    private fun createCrawler(kinds: Set<AnyMessage.KindCase>): CradleMessageGroupCrawler {
+    private fun createCrawler(kinds: Set<MessageKind>): CradleMessageGroupCrawler {
         whenever(crawlerConfiguration.messages).thenReturn(MessageConfiguration(
             kinds,
             mapOf(BOOK_NAME to setOf())
