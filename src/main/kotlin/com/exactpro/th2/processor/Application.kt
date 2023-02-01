@@ -41,7 +41,6 @@ import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import com.google.common.util.concurrent.ThreadFactoryBuilder
 import mu.KotlinLogging
-import org.apache.commons.lang3.StringUtils.isNotBlank
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
@@ -83,7 +82,6 @@ class Application(
         with(
             commonFactory
             .getCustomConfiguration(Configuration::class.java, objectMapper)
-            .validate()
         ) {
             configuration = this
 
@@ -165,16 +163,5 @@ class Application(
         const val EVENT_TYPE_PROCESS_INTERVAL = "Process interval"
 
         const val CONFIGURATION_ERROR_PREFIX = "Incorrect configuration parameters: "
-
-        private fun Configuration.validate(): Configuration = this.apply {
-            check((crawler != null) xor (realtime != null)) {
-                "Incorrect configuration parameters: process must work in one of crawler (configured: ${crawler != null}) / realtime (configured: ${realtime != null}) mode."
-            }
-
-            check(!enableStoreState || isNotBlank(stateSessionAlias)) {
-                "Incorrect configuration parameters: the $stateSessionAlias `state session alias` option is blank, " +
-                        "the `enable store state` is $enableStoreState"
-            }
-        }
     }
 }

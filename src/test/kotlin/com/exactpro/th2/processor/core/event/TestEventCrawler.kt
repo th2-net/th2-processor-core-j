@@ -59,8 +59,8 @@ class TestEventCrawler {
     private val processor = mock<IProcessor> {  }
     private val crawlerConfiguration = spy(CrawlerConfiguration(
         events = EventConfiguration(mapOf(BOOK_NAME to setOf())),
-        from = FROM.toString(),
-        to = TO.toString(),
+        from = FROM,
+        to = TO,
     ))
     private val configuration = Configuration(
         crawler = crawlerConfiguration,

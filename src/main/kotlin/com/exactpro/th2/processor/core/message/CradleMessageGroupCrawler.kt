@@ -51,11 +51,7 @@ internal class CradleMessageGroupCrawler(
         requireNotNull(crawlerConfiguration.messages) {
             "The `crawler.messages` configuration can not be null"
         }.bookToGroups
-    ).also { map ->
-        check(map.isNotEmpty()) {
-            "Incorrect configuration parameters: the `bookToGroups` option is empty"
-        }
-    }
+    )
 
     private val bookGroups: List<BookGroups> = bookToGroups.map { (book, groups) ->
         BookGroups.newBuilder().apply {

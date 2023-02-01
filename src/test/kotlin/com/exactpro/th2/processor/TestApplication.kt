@@ -57,7 +57,6 @@ import org.mockito.kotlin.argumentCaptor
 import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.same
-import org.mockito.kotlin.spy
 import org.mockito.kotlin.times
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
@@ -90,19 +89,6 @@ class TestApplication {
         on { getService(eq(QueueDataProviderService::class.java)) }.thenReturn(queueDataProvider)
         on { getService(eq(DataProviderService::class.java)) }.thenReturn(dataProvider)
     }
-    private val crawlerConfiguration = spy(CrawlerConfiguration(
-        from = FROM.toString(),
-        to = TO.toString(),
-        intervalLength = INTERVAL_LENGTH,
-        syncInterval = INTERVAL_LENGTH.dividedBy(2),
-        awaitTimeout = 1,
-    ))
-    private val configuration = spy(Configuration(
-        crawler = crawlerConfiguration,
-        stateSessionAlias = STATE_SESSION_ALIAS,
-        enableStoreState = true,
-        processorSettings = mock { }
-    ))
     private val cradleConfiguration = mock<CradleConfiguration> {
         on { cradleMaxMessageBatchSize }.thenReturn(1_024L * 1_024L)
     }
@@ -110,7 +96,6 @@ class TestApplication {
         on { eventBatchRouter }.thenReturn(eventRouter)
         on { messageRouterMessageGroupBatch }.thenReturn(messageRouter)
         on { grpcRouter }.thenReturn(grpcRouter)
-        on { getCustomConfiguration(eq(Configuration::class.java), any()) }.thenReturn(configuration)
         on { boxConfiguration }.thenReturn(BoxConfiguration().apply {
             boxName = "test-box"
             bookName = KNOWN_BOOK
@@ -124,6 +109,8 @@ class TestApplication {
     fun `test event, message, raw message crawling`() {
         mockEvents()
         mockMessages()
+        whenever(commonFactory.getCustomConfiguration(eq(Configuration::class.java), any()))
+            .thenReturn(crawlerConfiguration(messages = true, events = true))
         Application(commonFactory).use(Application::run)
         verify()
         verifyCrawlerRouters()
@@ -133,6 +120,8 @@ class TestApplication {
     @Timeout(10)
     fun `test event crawling`() {
         mockEvents()
+        whenever(commonFactory.getCustomConfiguration(eq(Configuration::class.java), any()))
+            .thenReturn(crawlerConfiguration(messages = false, events = true))
         Application(commonFactory).use(Application::run)
         verify()
         verifyCrawlerRouters()
@@ -142,6 +131,8 @@ class TestApplication {
     @Timeout(10)
     fun `test message, raw message crawling`() {
         mockMessages()
+        whenever(commonFactory.getCustomConfiguration(eq(Configuration::class.java), any()))
+            .thenReturn(crawlerConfiguration(messages = true, events = false))
         Application(commonFactory).use(Application::run)
         verify()
         verifyCrawlerRouters()
@@ -149,7 +140,8 @@ class TestApplication {
 
     @Test
     fun `test realtime mode`() {
-        mockRealtime()
+        whenever(commonFactory.getCustomConfiguration(eq(Configuration::class.java), any()))
+            .thenReturn(realtimeConfiguration())
         Application(commonFactory).use(Application::run)
         verify()
         val eventSender = argumentCaptor<EventBatch> { }
@@ -174,8 +166,6 @@ class TestApplication {
     }
 
     private fun mockMessages() {
-        whenever(crawlerConfiguration.messages)
-            .thenReturn(MessageConfiguration(setOf(MESSAGE, RAW_MESSAGE), mapOf(KNOWN_BOOK to setOf())))
         whenever(queueDataProvider.searchMessageGroups(any())).thenAnswer {
             with(messageListener.firstValue) {
                 handle(DELIVERY_METADATA, MessageGroupBatch.newBuilder().apply {
@@ -212,15 +202,29 @@ class TestApplication {
         }
     }
 
-    private fun mockRealtime() {
-        whenever(configuration.crawler)
-            .thenReturn(null)
-        whenever(configuration.realtime)
-            .thenReturn(RealtimeConfiguration(enableMessageSubscribtion = true, enableEventSubscribtion = true))
-    }
+    private fun crawlerConfiguration(messages: Boolean, events: Boolean) = Configuration(
+        crawler = CrawlerConfiguration(
+            messages = if(messages) MessageConfiguration(setOf(MESSAGE, RAW_MESSAGE), mapOf(KNOWN_BOOK to setOf())) else null,
+            events = if(events) EventConfiguration(mapOf(KNOWN_BOOK to setOf())) else null,
+            from =  FROM,
+            to = TO,
+            intervalLength = INTERVAL_LENGTH,
+            syncInterval = INTERVAL_LENGTH.dividedBy(2),
+            awaitTimeout = 1,
+        ),
+        stateSessionAlias = STATE_SESSION_ALIAS,
+        enableStoreState = true,
+        processorSettings = mock { }
+    )
+
+    private fun realtimeConfiguration() = Configuration(
+        realtime = RealtimeConfiguration(enableMessageSubscribtion = true, enableEventSubscribtion = true),
+        stateSessionAlias = STATE_SESSION_ALIAS,
+        enableStoreState = true,
+        processorSettings = mock { }
+    )
+
     private fun mockEvents() {
-        whenever(crawlerConfiguration.events)
-            .thenReturn(EventConfiguration(mapOf(KNOWN_BOOK to setOf())))
         whenever(queueDataProvider.searchEvents(any())).thenAnswer {
             with(eventListener.firstValue) {
                 handle(DELIVERY_METADATA, EventBatch.newBuilder().apply {

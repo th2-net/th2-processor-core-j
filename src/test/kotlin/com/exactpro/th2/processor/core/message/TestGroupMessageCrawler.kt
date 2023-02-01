@@ -39,7 +39,6 @@ import org.mockito.kotlin.any
 import org.mockito.kotlin.argThat
 import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
-import org.mockito.kotlin.spy
 import org.mockito.kotlin.times
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
@@ -61,14 +60,6 @@ class TestCradleMessageGroupCrawler {
         on { subscribeExclusive(any()) }.thenReturn(monitor)
     }
     private val processor = mock<IProcessor> {  }
-    private val crawlerConfiguration = spy(CrawlerConfiguration(
-        from = FROM.toString(),
-        to = TO.toString(),
-    ))
-    private val configuration = Configuration(
-        crawler = crawlerConfiguration,
-        processorSettings = mock {  }
-    )
     private val commonFactory = mock<CommonFactory> {
         on { messageRouterMessageGroupBatch }.thenReturn(messageRouter)
         on { grpcRouter }.thenReturn(grpcRouter)
@@ -76,7 +67,6 @@ class TestCradleMessageGroupCrawler {
     private val context = mock<Context> {
         on { commonFactory }.thenReturn(commonFactory)
         on { eventBatcher }.thenReturn(eventBatcher)
-        on { configuration }.thenReturn(configuration)
         on { processorEventId }.thenReturn(PROCESSOR_EVENT_ID)
     }
 
@@ -111,10 +101,19 @@ class TestCradleMessageGroupCrawler {
     }
 
     private fun createCrawler(kinds: Set<MessageKind>): CradleMessageGroupCrawler {
-        whenever(crawlerConfiguration.messages).thenReturn(MessageConfiguration(
-            kinds,
-            mapOf(BOOK_NAME to setOf())
-        ))
+        whenever(context.configuration).thenReturn(
+            Configuration(
+                crawler = CrawlerConfiguration(
+                    messages = MessageConfiguration(
+                        kinds,
+                        mapOf(BOOK_NAME to setOf())
+                    ),
+                    from = FROM,
+                    to = TO,
+                ),
+                processorSettings = mock {  }
+            )
+        )
         return CradleMessageGroupCrawler(context, processor)
     }
 

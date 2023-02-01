@@ -16,9 +16,19 @@
 
 package com.exactpro.th2.processor.core.configuration
 
+import com.exactpro.th2.processor.Application
 import com.exactpro.th2.processor.core.configuration.MessageKind.MESSAGE
 
 class MessageConfiguration @JvmOverloads constructor(
     val messageKinds: Set<MessageKind> = setOf(MESSAGE),
     val bookToGroups: Map<String, Set<String>>,
-)
+) {
+    init {
+        check(messageKinds.isNotEmpty()) {
+            Application.CONFIGURATION_ERROR_PREFIX + "the `messageKinds` option is empty"
+        }
+        check(bookToGroups.isNotEmpty()) {
+            Application.CONFIGURATION_ERROR_PREFIX + "the `bookToGroups` option is empty"
+        }
+    }
+}

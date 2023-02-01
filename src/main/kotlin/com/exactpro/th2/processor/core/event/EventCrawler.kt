@@ -47,11 +47,7 @@ class EventCrawler(
         requireNotNull(crawlerConfiguration.events) {
             "The `crawler.events` configuration can not be null"
         }.bookToScopes
-    ).also { map ->
-        check(map.isNotEmpty()) {
-            "Incorrect configuration parameters: the `bookToScopes` option is empty"
-        }
-    }
+    )
 
     private val bookScopes: List<EventQueueSearchRequest.BookScopes> = bookToScopes.map { (book, scopes) ->
         EventQueueSearchRequest.BookScopes.newBuilder().apply {

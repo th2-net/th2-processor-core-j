@@ -43,31 +43,14 @@ class CrawlerStrategy(context: Context): AbstractStrategy(context) {
     private val processor: IProcessor
     private val crawlers: Set<Crawler<*>>
 
-    private val from: Instant
-    private val to: Instant?
-    private val intervalLength: Duration
+    private val from: Instant = crawlerConfig.from
+    private val to: Instant? = crawlerConfig.to
+    private val intervalLength: Duration = crawlerConfig.intervalLength
 
     private var currentFrom: Instant
     private var currentTo: Instant
 
     init {
-        check(crawlerConfig.awaitTimeout > 0) {
-            "Incorrect configuration parameters: the ${crawlerConfig.awaitTimeout} `await timeout` option isn't positive"
-        }
-
-        check((crawlerConfig.messages != null) || (crawlerConfig.events != null)) {
-            CONFIGURATION_ERROR_PREFIX +
-                    "neither of ${crawlerConfig.messages} `messages`, ${crawlerConfig.events} `events` options are filled."
-        }
-
-        from = Instant.parse(crawlerConfig.from)
-        to = crawlerConfig.to?.run(Instant::parse)
-        check(to == null || to >= from) {
-            CONFIGURATION_ERROR_PREFIX +
-                    "the ${crawlerConfig.to} `to` option is less than the ${crawlerConfig.from} `from`"
-        }
-
-        intervalLength = crawlerConfig.intervalLength
         currentFrom = from
         currentTo = from.doStep()
 
