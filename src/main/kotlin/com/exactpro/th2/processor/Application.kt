@@ -35,8 +35,8 @@ import com.exactpro.th2.processor.strategy.AbstractStrategy
 import com.exactpro.th2.processor.strategy.CrawlerStrategy
 import com.exactpro.th2.processor.strategy.RealtimeStrategy
 import com.exactpro.th2.processor.utility.load
+import com.fasterxml.jackson.core.JsonFactory
 import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.dataformat.yaml.YAMLFactory
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import com.google.common.util.concurrent.ThreadFactoryBuilder
@@ -71,7 +71,7 @@ class Application(
     init {
         liveness.enable()
 
-        val objectMapper = ObjectMapper(YAMLFactory()).apply {
+        val objectMapper = ObjectMapper(JsonFactory()).apply {
             registerKotlinModule()
             registerModule(JavaTimeModule())
         }

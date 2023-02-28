@@ -350,3 +350,21 @@ spec:
           attributes:
             - store
 ```
+
+# Release notes
+
+## 0.3.0
+### Updated
++ common:5.2.0-dev
+### Added
++ vulnerability check via owasp and trivy
+
+## 0.2.0
+### Updated
++ bom:4.2.0
++ common:5.1.1-dev
++ common-utils:2.0.0-dev
+
+### Added
++ vulnerability check
++ dev release workflow

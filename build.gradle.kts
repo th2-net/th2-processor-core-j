@@ -9,7 +9,7 @@ plugins {
     `java-library`
     `maven-publish`
     signing
-    id("org.owasp.dependencycheck") version "7.3.0"
+    id("org.owasp.dependencycheck") version "8.1.1"
     id("io.github.gradle-nexus.publish-plugin") version "1.0.0"
 }
 
@@ -42,19 +42,22 @@ repositories {
     }
 }
 
-dependencies {
-    api(platform("com.exactpro.th2:bom:4.1.0"))
+configurations {
+    compileClasspath {
+        resolutionStrategy.activateDependencyLocking()
+    }
+}
 
-    //FIXME: remove after relase
-    implementation("com.exactpro.th2:grpc-common:4.1.0-th2-2150-books-pages-3871780258-SNAPSHOT")
-    implementation("com.exactpro.th2:common:5.1.0-dev-version-5-3967999162-SNAPSHOT")
-    implementation("com.exactpro.th2:common-utils:0.0.1-book-and-page-3607472196-SNAPSHOT")
-    implementation("com.exactpro.th2:grpc-lw-data-provider:2.0.0-raw-messages-3847933308-SNAPSHOT")
+dependencies {
+    api(platform("com.exactpro.th2:bom:4.2.0"))
+
+    implementation("com.exactpro.th2:common:5.2.0-dev")
+    implementation("com.exactpro.th2:common-utils:2.0.0-dev")
+    implementation("com.exactpro.th2:grpc-lw-data-provider:2.0.0-dev-version-2-4193884623-SNAPSHOT")
 
     implementation("com.fasterxml.jackson.core:jackson-core")
     implementation("com.fasterxml.jackson.module:jackson-module-kotlin")
     implementation("com.fasterxml.jackson.dataformat:jackson-dataformat-cbor:2.14.0")
-    implementation("com.fasterxml.jackson.dataformat:jackson-dataformat-yaml")
     implementation("com.fasterxml.jackson.datatype:jackson-datatype-jsr310")
 
     testCompileOnly("com.google.auto.service:auto-service:1.0.1")
@@ -64,6 +67,11 @@ dependencies {
     testImplementation("org.mockito.kotlin:mockito-kotlin:4.0.0")
 
     testImplementation("org.junit.jupiter:junit-jupiter:5.9.0")
+}
+
+dependencyCheck {
+    formats = mutableListOf("SARIF", "JSON", "HTML")
+    failBuildOnCVSS = 5.0f
 }
 
 publishing {
