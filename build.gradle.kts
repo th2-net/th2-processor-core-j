@@ -42,6 +42,12 @@ repositories {
     }
 }
 
+configurations {
+    compileClasspath {
+        resolutionStrategy.activateDependencyLocking()
+    }
+}
+
 dependencies {
     api(platform("com.exactpro.th2:bom:4.2.0"))
 
@@ -61,6 +67,11 @@ dependencies {
     testImplementation("org.mockito.kotlin:mockito-kotlin:4.0.0")
 
     testImplementation("org.junit.jupiter:junit-jupiter:5.9.0")
+}
+
+dependencyCheck {
+    formats = mutableListOf("SARIF", "JSON", "HTML")
+    failBuildOnCVSS = 5.0f
 }
 
 publishing {
