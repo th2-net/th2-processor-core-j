@@ -9,7 +9,7 @@ plugins {
     `java-library`
     `maven-publish`
     signing
-    id("org.owasp.dependencycheck") version "7.3.0"
+    id("org.owasp.dependencycheck") version "8.1.1"
     id("io.github.gradle-nexus.publish-plugin") version "1.0.0"
 }
 
@@ -45,7 +45,7 @@ repositories {
 dependencies {
     api(platform("com.exactpro.th2:bom:4.2.0"))
 
-    implementation("com.exactpro.th2:common:5.1.1-dev")
+    implementation("com.exactpro.th2:common:5.2.0-dev")
     implementation("com.exactpro.th2:common-utils:2.0.0-dev")
     implementation("com.exactpro.th2:grpc-lw-data-provider:2.0.0-dev-version-2-4193884623-SNAPSHOT")
 

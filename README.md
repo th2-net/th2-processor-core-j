@@ -353,6 +353,12 @@ spec:
 
 # Release notes
 
+## 0.3.0
+### Updated
++ common:5.2.0-dev
+### Added
++ vulnerability check via owasp and trivy
+
 ## 0.2.0
 ### Updated
 + bom:4.2.0
