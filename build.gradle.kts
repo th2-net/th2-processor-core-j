@@ -1,7 +1,10 @@
 @file:Suppress("SpellCheckingInspection")
 
+import com.github.jk1.license.filter.LicenseBundleNormalizer
+import com.github.jk1.license.render.JsonReportRenderer
 import org.gradle.api.JavaVersion.VERSION_11
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
+import java.net.URL
 
 plugins {
     kotlin("jvm") version "1.8.22"
@@ -9,8 +12,11 @@ plugins {
     `java-library`
     `maven-publish`
     signing
-    id("org.owasp.dependencycheck") version "7.3.0"
-    id("io.github.gradle-nexus.publish-plugin") version "1.0.0"
+    id("org.owasp.dependencycheck") version "8.3.1"
+    id("io.github.gradle-nexus.publish-plugin") version "1.3.0"
+    id("com.gorylenko.gradle-git-properties") version "2.4.1"
+    id("com.github.jk1.dependency-license-report") version "2.5"
+    id("de.undercouch.download") version "5.4.0"
 }
 
 group = "com.exactpro.th2"
@@ -174,4 +180,40 @@ tasks {
                 project.hasProperty("signingPassword")
         }
     }
+}
+
+dependencyLocking {
+    lockAllConfigurations()
+}
+
+dependencyCheck {
+    formats = listOf("SARIF", "JSON", "HTML")
+    failBuildOnCVSS = 5F
+
+    analyzers.apply {
+        assemblyEnabled = false
+        nugetconfEnabled = false
+        nodeEnabled = false
+    }
+}
+
+licenseReport {
+    val licenseNormalizerBundlePath = "$buildDir/license-normalizer-bundle.json"
+
+    if (!file(licenseNormalizerBundlePath).exists()) {
+        download.run {
+            src("https://raw.githubusercontent.com/th2-net/.github/main/license-compliance/gradle-license-report/license-normalizer-bundle.json")
+            dest("$buildDir/license-normalizer-bundle.json")
+            overwrite(false)
+        }
+    }
+
+    filters = arrayOf(
+        LicenseBundleNormalizer(licenseNormalizerBundlePath, false)
+    )
+    renderers = arrayOf(
+        JsonReportRenderer("licenses.json", false),
+    )
+    excludeOwnGroup = false
+    allowedLicensesFile = URL("https://raw.githubusercontent.com/th2-net/.github/main/license-compliance/gradle-license-report/allowed-licenses.json")
 }
