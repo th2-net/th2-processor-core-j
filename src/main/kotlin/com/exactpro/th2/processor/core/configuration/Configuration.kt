@@ -18,7 +18,6 @@ package com.exactpro.th2.processor.core.configuration
 
 import com.exactpro.th2.processor.Application
 import com.exactpro.th2.processor.api.IProcessorSettings
-import org.apache.commons.lang3.StringUtils
 
 class Configuration @JvmOverloads constructor(
     val realtime: RealtimeConfiguration? = null,
@@ -38,7 +37,7 @@ class Configuration @JvmOverloads constructor(
                     "process must work in one of crawler (configured: ${crawler != null}) / realtime (configured: ${realtime != null}) mode."
         }
 
-        check(!enableStoreState || StringUtils.isNotBlank(stateSessionAlias)) {
+        check(!enableStoreState || !stateSessionAlias.isNullOrBlank()) {
             Application.CONFIGURATION_ERROR_PREFIX + "the $stateSessionAlias `state session alias` option is blank, the `enable store state` is $enableStoreState"
         }
     }

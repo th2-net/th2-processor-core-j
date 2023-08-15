@@ -1,16 +1,22 @@
 @file:Suppress("SpellCheckingInspection")
 
+import com.github.jk1.license.filter.LicenseBundleNormalizer
+import com.github.jk1.license.render.JsonReportRenderer
 import org.gradle.api.JavaVersion.VERSION_11
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
+import java.net.URL
 
 plugins {
-    kotlin("jvm") version "1.6.21"
-    kotlin("kapt") version "1.6.21"
+    kotlin("jvm") version "1.8.22"
+    kotlin("kapt") version "1.8.22"
     `java-library`
     `maven-publish`
     signing
-    id("org.owasp.dependencycheck") version "7.3.0"
-    id("io.github.gradle-nexus.publish-plugin") version "1.0.0"
+    id("org.owasp.dependencycheck") version "8.3.1"
+    id("io.github.gradle-nexus.publish-plugin") version "1.3.0"
+    id("com.gorylenko.gradle-git-properties") version "2.4.1"
+    id("com.github.jk1.dependency-license-report") version "2.5"
+    id("de.undercouch.download") version "5.4.0"
 }
 
 group = "com.exactpro.th2"
@@ -43,27 +49,28 @@ repositories {
 }
 
 dependencies {
-    api(platform("com.exactpro.th2:bom:4.1.0"))
+    api(platform("com.exactpro.th2:bom:4.4.0"))
 
-    //FIXME: remove after relase
-    implementation("com.exactpro.th2:grpc-common:4.1.0-th2-2150-books-pages-3871780258-SNAPSHOT")
-    implementation("com.exactpro.th2:common:5.1.0-dev-version-5-3967999162-SNAPSHOT")
-    implementation("com.exactpro.th2:common-utils:0.0.1-book-and-page-3607472196-SNAPSHOT")
-    implementation("com.exactpro.th2:grpc-lw-data-provider:2.0.0-raw-messages-3847933308-SNAPSHOT")
+    api("com.exactpro.th2:grpc-common:4.3.0-dev")
+    implementation("com.exactpro.th2:common:5.3.2-dev")
+    implementation("com.exactpro.th2:common-utils:2.1.1-dev")
+    implementation("com.exactpro.th2:grpc-lw-data-provider:2.0.1-dev")
 
     implementation("com.fasterxml.jackson.core:jackson-core")
     implementation("com.fasterxml.jackson.module:jackson-module-kotlin")
-    implementation("com.fasterxml.jackson.dataformat:jackson-dataformat-cbor:2.14.0")
+    implementation("com.fasterxml.jackson.dataformat:jackson-dataformat-cbor")
     implementation("com.fasterxml.jackson.dataformat:jackson-dataformat-yaml")
     implementation("com.fasterxml.jackson.datatype:jackson-datatype-jsr310")
 
-    testCompileOnly("com.google.auto.service:auto-service:1.0.1")
-    kaptTest("com.google.auto.service:auto-service:1.0.1")
+    implementation("io.github.microutils:kotlin-logging:3.0.5")
+
+    testCompileOnly("com.google.auto.service:auto-service:1.1.1")
+    kaptTest("com.google.auto.service:auto-service:1.1.1")
 
     testImplementation("org.jetbrains.kotlin:kotlin-test-junit5")
-    testImplementation("org.mockito.kotlin:mockito-kotlin:4.0.0")
+    testImplementation("org.mockito.kotlin:mockito-kotlin:5.1.0")
 
-    testImplementation("org.junit.jupiter:junit-jupiter:5.9.0")
+    testImplementation("org.junit.jupiter:junit-jupiter:5.10.0")
 }
 
 publishing {
@@ -173,4 +180,40 @@ tasks {
                 project.hasProperty("signingPassword")
         }
     }
+}
+
+dependencyLocking {
+    lockAllConfigurations()
+}
+
+dependencyCheck {
+    formats = listOf("SARIF", "JSON", "HTML")
+    failBuildOnCVSS = 5F
+
+    analyzers.apply {
+        assemblyEnabled = false
+        nugetconfEnabled = false
+        nodeEnabled = false
+    }
+}
+
+licenseReport {
+    val licenseNormalizerBundlePath = "$buildDir/license-normalizer-bundle.json"
+
+    if (!file(licenseNormalizerBundlePath).exists()) {
+        download.run {
+            src("https://raw.githubusercontent.com/th2-net/.github/main/license-compliance/gradle-license-report/license-normalizer-bundle.json")
+            dest("$buildDir/license-normalizer-bundle.json")
+            overwrite(false)
+        }
+    }
+
+    filters = arrayOf(
+        LicenseBundleNormalizer(licenseNormalizerBundlePath, false)
+    )
+    renderers = arrayOf(
+        JsonReportRenderer("licenses.json", false),
+    )
+    excludeOwnGroup = false
+    allowedLicensesFile = URL("https://raw.githubusercontent.com/th2-net/.github/main/license-compliance/gradle-license-report/allowed-licenses.json")
 }

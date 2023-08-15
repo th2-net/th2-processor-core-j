@@ -16,6 +16,9 @@
 
 package com.exactpro.th2.processor
 
+import com.exactpro.cradle.CradleEntitiesFactory
+import com.exactpro.cradle.CradleManager
+import com.exactpro.cradle.CradleStorage
 import com.exactpro.th2.common.grpc.Event
 import com.exactpro.th2.common.grpc.EventBatch
 import com.exactpro.th2.common.grpc.EventID
@@ -25,7 +28,6 @@ import com.exactpro.th2.common.grpc.RawMessage
 import com.exactpro.th2.common.message.plusAssign
 import com.exactpro.th2.common.message.toTimestamp
 import com.exactpro.th2.common.schema.box.configuration.BoxConfiguration
-import com.exactpro.th2.common.schema.cradle.CradleConfiguration
 import com.exactpro.th2.common.schema.factory.CommonFactory
 import com.exactpro.th2.common.schema.grpc.router.GrpcRouter
 import com.exactpro.th2.common.schema.message.DeliveryMetadata
@@ -54,6 +56,7 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
 import org.mockito.kotlin.any
 import org.mockito.kotlin.argumentCaptor
+import org.mockito.kotlin.doReturn
 import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.same
@@ -89,8 +92,15 @@ class TestApplication {
         on { getService(eq(QueueDataProviderService::class.java)) }.thenReturn(queueDataProvider)
         on { getService(eq(DataProviderService::class.java)) }.thenReturn(dataProvider)
     }
-    private val cradleConfiguration = mock<CradleConfiguration> {
-        on { cradleMaxMessageBatchSize }.thenReturn(1_024L * 1_024L)
+    private val cradleManager = mock<CradleManager> {
+        val cradleStorage = mock<CradleStorage> {
+            on { entitiesFactory } doReturn CradleEntitiesFactory(
+                1_024 * 1_024,
+                1_024 * 1_024,
+                100,
+            )
+        }
+        on { storage } doReturn cradleStorage
     }
     private val commonFactory = mock<CommonFactory> {
         on { eventBatchRouter }.thenReturn(eventRouter)
@@ -100,7 +110,7 @@ class TestApplication {
             boxName = "test-box"
             bookName = KNOWN_BOOK
         })
-        on { cradleConfiguration }.thenReturn(cradleConfiguration)
+        on { cradleManager }.thenReturn(cradleManager)
         on { rootEventId }.thenReturn(ROOT_EVENT_ID)
     }
 
