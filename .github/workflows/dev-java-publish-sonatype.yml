@@ -8,7 +8,9 @@ on:
 
 jobs:
   sonatype-job:
-    uses: th2-net/.github/.github/workflows/dev-java-publish-sonatype.yml@th2-4253-jar-publishing
+    uses: th2-net/.github/.github/workflows/compound-java-dev.yml@main
+    with:
+      build-target: 'Sonatype'
     secrets:
       SONATYPE_NEXUS_USERNAME: ${{ secrets.SONATYPE_NEXUS_USERNAME }}
       SONATYPE_NEXUS_PASSWORD: ${{ secrets.SONATYPE_NEXUS_PASSWORD }}
