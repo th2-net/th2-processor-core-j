@@ -4,8 +4,8 @@ import org.gradle.api.JavaVersion.VERSION_11
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
 plugins {
-    kotlin("jvm") version "1.6.21"
-    kotlin("kapt") version "1.6.21"
+    kotlin("jvm") version "1.8.22"
+    kotlin("kapt") version "1.8.22"
     `java-library`
     `maven-publish`
     signing
@@ -43,27 +43,27 @@ repositories {
 }
 
 dependencies {
-    api(platform("com.exactpro.th2:bom:4.1.0"))
+    api(platform("com.exactpro.th2:bom:4.4.0"))
 
-    //FIXME: remove after relase
-    implementation("com.exactpro.th2:grpc-common:4.1.0-th2-2150-books-pages-3871780258-SNAPSHOT")
-    implementation("com.exactpro.th2:common:5.1.0-dev-version-5-3967999162-SNAPSHOT")
-    implementation("com.exactpro.th2:common-utils:0.0.1-book-and-page-3607472196-SNAPSHOT")
-    implementation("com.exactpro.th2:grpc-lw-data-provider:2.0.0-raw-messages-3847933308-SNAPSHOT")
+    implementation("com.exactpro.th2:common:5.3.2-dev")
+    implementation("com.exactpro.th2:common-utils:2.1.1-dev")
+    implementation("com.exactpro.th2:grpc-lw-data-provider:2.0.1-dev")
 
     implementation("com.fasterxml.jackson.core:jackson-core")
     implementation("com.fasterxml.jackson.module:jackson-module-kotlin")
-    implementation("com.fasterxml.jackson.dataformat:jackson-dataformat-cbor:2.14.0")
+    implementation("com.fasterxml.jackson.dataformat:jackson-dataformat-cbor")
     implementation("com.fasterxml.jackson.dataformat:jackson-dataformat-yaml")
     implementation("com.fasterxml.jackson.datatype:jackson-datatype-jsr310")
 
-    testCompileOnly("com.google.auto.service:auto-service:1.0.1")
-    kaptTest("com.google.auto.service:auto-service:1.0.1")
+    implementation("io.github.microutils:kotlin-logging:3.0.5")
+
+    testCompileOnly("com.google.auto.service:auto-service:1.1.1")
+    kaptTest("com.google.auto.service:auto-service:1.1.1")
 
     testImplementation("org.jetbrains.kotlin:kotlin-test-junit5")
-    testImplementation("org.mockito.kotlin:mockito-kotlin:4.0.0")
+    testImplementation("org.mockito.kotlin:mockito-kotlin:5.1.0")
 
-    testImplementation("org.junit.jupiter:junit-jupiter:5.9.0")
+    testImplementation("org.junit.jupiter:junit-jupiter:5.10.0")
 }
 
 publishing {

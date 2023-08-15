@@ -92,7 +92,9 @@ class Application(
                     commonFactory.grpcRouter.getService(DataProviderService::class.java),
                     commonFactory.boxConfiguration.bookName,
                     requireNotNull(stateSessionAlias) { "`state session alias` can be empty" },
-                    commonFactory.cradleConfiguration.cradleMaxMessageBatchSize
+                    // FIXME: the common factory does not provide access to cradle config
+                    // The only way to get this value is to initialize Cradle manager that we shouldn't do
+                    1024 * 1024,
                 )
             } else {
                  DummyStateStorage()
