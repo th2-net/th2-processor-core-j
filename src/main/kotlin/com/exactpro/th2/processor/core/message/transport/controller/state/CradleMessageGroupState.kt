@@ -14,42 +14,39 @@
  * limitations under the License.
  */
 
-package com.exactpro.th2.processor.core.message.controller.state
+package com.exactpro.th2.processor.core.message.transport.controller.state
 
-import com.exactpro.th2.common.grpc.AnyMessage
-import com.exactpro.th2.common.grpc.MessageGroup
-import com.exactpro.th2.common.message.logId
 import com.exactpro.th2.common.message.toJson
-import com.exactpro.th2.common.utils.message.book
-import com.exactpro.th2.common.utils.message.sessionGroup
-import com.exactpro.th2.common.utils.message.timestamp
+import com.exactpro.th2.common.schema.message.impl.rabbitmq.transport.GroupBatch
+import com.exactpro.th2.common.schema.message.impl.rabbitmq.transport.MessageGroup
+import com.exactpro.th2.common.utils.message.transport.logId
 import com.exactpro.th2.dataprovider.lw.grpc.MessageLoadedStatistic
 import com.exactpro.th2.dataprovider.lw.grpc.MessageLoadedStatistic.GroupStat
+import com.exactpro.th2.processor.core.configuration.MessageKind
 import com.exactpro.th2.processor.core.state.StateUpdater
 import com.exactpro.th2.processor.utility.check
-import com.exactpro.th2.processor.utility.compareTo
-import com.google.protobuf.Timestamp
-import com.google.protobuf.util.Timestamps
+import com.exactpro.th2.processor.utility.protoKind
 import mu.KotlinLogging
+import java.time.Instant
 import java.util.concurrent.ConcurrentHashMap
 
 //TODO: Extract common part
 internal class CradleMessageGroupState(
-    private val startTime: Timestamp,
-    private val endTime: Timestamp,
-    private val kinds: Set<AnyMessage.KindCase>,
+    private val startTime: Instant,
+    private val endTime: Instant,
+    private val kinds: Set<MessageKind>,
     private val bookToGroups: Map<String, Set<String>>
 ) {
     private val groupToNumber = ConcurrentHashMap<StateKey, Long>()
     val isStateEmpty: Boolean
         get() = groupToNumber.isEmpty()
 
-    fun plus(func: StateUpdater<MessageGroup>.() -> Unit): Boolean {
+    fun plus(func: StateUpdater<GroupBatch, MessageGroup>.() -> Unit): Boolean {
         val temporaryState = mutableMapOf<StateKey, Long>()
-        object : StateUpdater<MessageGroup> {
+        object : StateUpdater<GroupBatch, MessageGroup> {
             @Suppress("PARAMETER_NAME_CHANGED_ON_OVERRIDE")
-            override fun updateState(messageGroup: MessageGroup) {
-                temporaryState.compute(messageGroup.check().toStateKey()) { _, current -> (current ?: 0L) + 1 }
+            override fun updateState(batch: GroupBatch, group: MessageGroup) {
+                temporaryState.compute(group.check().toStateKey(batch)) { _, current -> (current ?: 0L) + 1 }
             }
         }.func()
 
@@ -88,45 +85,38 @@ internal class CradleMessageGroupState(
         return needCheck && isStateEmpty
     }
     private fun MessageGroup.check(): MessageGroup {
-        val firstMessage = requireNotNull(messagesList.first()) {
+        val firstMessage = requireNotNull(messages.first()) {
             "Message group can't be empty"
         }
-        val timestamp = firstMessage.timestamp
+        val timestamp = firstMessage.id.timestamp
         check(timestamp >= startTime && timestamp < endTime) {
-            "Out of interval message ${firstMessage.logId}, " +
-                    "actual ${Timestamps.toString(timestamp)}, " +
-                    "expected [${Timestamps.toString(startTime)} - ${Timestamps.toString(endTime)})"
+            "Out of interval message ${firstMessage.id.logId}, " +
+                    "actual $timestamp, " +
+                    "expected [$startTime - $endTime)"
         }
-        val kindSet = hashSetOf<AnyMessage.KindCase>()
-        messagesList.forEach { anyMessage ->
-            check(kinds.contains(anyMessage.kindCase)) {
-                "Incorrect message kind ${anyMessage.logId}, " +
-                        "actual ${anyMessage.kindCase}, expected one of $kinds"
+        val kindSet = hashSetOf<MessageKind>()
+        messages.forEach { message ->
+            check(kinds.contains(message.protoKind)) {
+                "Incorrect message kind ${message.id.logId}, " +
+                        "actual ${message.javaClass}, expected one of $kinds"
             }
-            kindSet.add(anyMessage.kindCase)
+            kindSet.add(message.protoKind)
         }
         check(kindSet.size == 1) {
-            "The ${firstMessage.logId} message group has messages with $kindSet kinds, expected only one kind"
+            "The ${firstMessage.id.logId} message group has messages with $kindSet kinds, expected only one kind"
         }
         return this
     }
-    private fun MessageGroup.toStateKey(): StateKey {
-        val firstMessage = requireNotNull(messagesList.first()) {
+    private fun MessageGroup.toStateKey(batch: GroupBatch): StateKey {
+        val firstMessage = requireNotNull(messages.first()) {
             "Message group can't be empty"
         }
 
-        val book = requireNotNull(firstMessage.book) {
-            "Any message has empty book name. ${this.toJson()}"
-        }
-        val group = requireNotNull(firstMessage.sessionGroup) {
-            "Any message has empty group name. ${this.toJson()}"
+        bookToGroups.check(batch.book, batch.sessionGroup) {
+            "Unexpected message ${firstMessage.id}, book $batch, group ${batch.sessionGroup}"
         }
 
-        bookToGroups.check(book, group) {
-            "Unexpected message ${firstMessage.logId}, book $book, group $group"
-        }
-
-        return StateKey(book, group)
+        return StateKey(batch.book, batch.sessionGroup)
     }
 
     private fun GroupStat.toStateKey(): StateKey {

@@ -14,14 +14,15 @@
  * limitations under the License.
  */
 
-package com.exactpro.th2.processor.core.message.controller
+package com.exactpro.th2.processor.core.message.protobuf.controller
 
 import com.exactpro.th2.common.grpc.EventID
 import com.exactpro.th2.common.grpc.MessageGroup
+import com.exactpro.th2.common.grpc.MessageGroupBatch
 import com.exactpro.th2.dataprovider.lw.grpc.MessageLoadedStatistic
 import com.exactpro.th2.processor.api.IProcessor
 import com.exactpro.th2.processor.core.configuration.MessageKind
-import com.exactpro.th2.processor.core.message.controller.state.CradleMessageGroupState
+import com.exactpro.th2.processor.core.message.protobuf.controller.state.CradleMessageGroupState
 import com.exactpro.th2.processor.core.state.StateUpdater
 import com.google.protobuf.Timestamp
 
@@ -41,7 +42,7 @@ internal class CradleMessageGroupController(
     override val isStateComplete: Boolean
         get() = super.isStateComplete && cradleMessageGroupState.isStateEmpty
 
-    override fun updateActualState(func: StateUpdater<MessageGroup>.() -> Unit): Boolean = cradleMessageGroupState.plus(func)
+    override fun updateActualState(func: StateUpdater<MessageGroupBatch, MessageGroup>.() -> Unit): Boolean = cradleMessageGroupState.plus(func)
 
     override fun updateExpectedState(loadedStatistic: MessageLoadedStatistic): Boolean = cradleMessageGroupState.minus(loadedStatistic)
 }

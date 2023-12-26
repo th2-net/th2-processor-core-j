@@ -14,11 +14,10 @@
  * limitations under the License.
  */
 
-package com.exactpro.th2.processor.core.message
+package com.exactpro.th2.processor.core.message.protobuf
 
 import com.exactpro.th2.common.grpc.EventID
 import com.exactpro.th2.common.grpc.MessageGroupBatch
-import com.exactpro.th2.common.message.toTimestamp
 import com.exactpro.th2.common.schema.factory.CommonFactory
 import com.exactpro.th2.common.schema.grpc.router.GrpcRouter
 import com.exactpro.th2.common.schema.message.ExclusiveSubscriberMonitor
@@ -44,6 +43,7 @@ import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 import java.time.Instant
 
+// TODO: Implement for transport
 class TestCradleMessageGroupCrawler {
 
     private val dataProvider = mock<QueueDataProviderService> {
@@ -73,7 +73,7 @@ class TestCradleMessageGroupCrawler {
     @Test
     fun `test response for both kinds`() {
         val crawler = createCrawler(setOf(MESSAGE, RAW_MESSAGE))
-        crawler.processInterval(FROM.toTimestamp(), TO.toTimestamp(), INTERVAL_EVENT_ID)
+        crawler.processInterval(FROM, TO, INTERVAL_EVENT_ID)
 
         verify(dataProvider, times(1)).searchMessageGroups(argThat { argument ->
             !argument.rawOnly && argument.sendRawDirectly
@@ -83,7 +83,7 @@ class TestCradleMessageGroupCrawler {
     @Test
     fun `test response for message kind`() {
         val crawler = createCrawler(setOf(MESSAGE))
-        crawler.processInterval(FROM.toTimestamp(), TO.toTimestamp(), INTERVAL_EVENT_ID)
+        crawler.processInterval(FROM, TO, INTERVAL_EVENT_ID)
 
         verify(dataProvider, times(1)).searchMessageGroups(argThat { argument ->
             !argument.rawOnly && !argument.sendRawDirectly
@@ -93,7 +93,7 @@ class TestCradleMessageGroupCrawler {
     @Test
     fun `test response for raw message kind`() {
         val crawler = createCrawler(setOf(RAW_MESSAGE))
-        crawler.processInterval(FROM.toTimestamp(), TO.toTimestamp(), INTERVAL_EVENT_ID)
+        crawler.processInterval(FROM, TO, INTERVAL_EVENT_ID)
 
         verify(dataProvider, times(1)).searchMessageGroups(argThat { argument ->
             argument.rawOnly && argument.sendRawDirectly

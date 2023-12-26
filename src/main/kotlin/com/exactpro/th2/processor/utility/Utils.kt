@@ -20,8 +20,12 @@ import com.exactpro.th2.common.event.Event
 import com.exactpro.th2.common.grpc.EventBatchOrBuilder
 import com.exactpro.th2.common.grpc.EventOrBuilder
 import com.exactpro.th2.common.grpc.EventStatus
+import com.exactpro.th2.common.schema.message.impl.rabbitmq.transport.Message
+import com.exactpro.th2.common.schema.message.impl.rabbitmq.transport.ParsedMessage
+import com.exactpro.th2.common.schema.message.impl.rabbitmq.transport.RawMessage
 import com.exactpro.th2.common.utils.message.logId
 import com.exactpro.th2.processor.core.HandleMessageException
+import com.exactpro.th2.processor.core.configuration.MessageKind
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.dataformat.cbor.databind.CBORMapper
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
@@ -31,6 +35,13 @@ import mu.KLogger
 
 val OBJECT_MAPPER: ObjectMapper = CBORMapper()
     .registerModule(JavaTimeModule())
+
+val Message<*>.protoKind: MessageKind
+    get() = when (this) {
+        is ParsedMessage -> MessageKind.MESSAGE
+        is RawMessage -> MessageKind.RAW_MESSAGE
+        else -> error("Unsupported type ${this::class.java}")
+    }
 
 inline fun Boolean.ifTrue(func: () -> Unit): Boolean = this.also { if(it) func() }
 

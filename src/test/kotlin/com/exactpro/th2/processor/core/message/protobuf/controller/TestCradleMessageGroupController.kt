@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package com.exactpro.th2.processor.core.message.controller
+package com.exactpro.th2.processor.core.message.protobuf.controller
 
 import com.exactpro.th2.common.grpc.Event
 import com.exactpro.th2.common.grpc.EventID
@@ -36,7 +36,8 @@ import com.exactpro.th2.processor.core.configuration.MessageKind
 import com.exactpro.th2.processor.core.configuration.MessageKind.MESSAGE
 import com.exactpro.th2.processor.core.configuration.MessageKind.RAW_MESSAGE
 import com.exactpro.th2.processor.message
-import com.exactpro.th2.processor.rawMessage
+import com.exactpro.th2.processor.protobufMessage
+import com.exactpro.th2.processor.protobufRawMessage
 import org.junit.jupiter.api.assertDoesNotThrow
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.Arguments
@@ -55,6 +56,7 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
+// TODO: Implement for transport
 internal class TestCradleMessageGroupController {
 
     private val processor: IProcessor = mock { }
@@ -342,9 +344,9 @@ internal class TestCradleMessageGroupController {
     @MethodSource("allCombinations")
     fun `receive correct messages`(bookToGroup: Map<String, Set<String>>, kinds: Set<MessageKind>) {
         val minMessage =
-            message(KNOWN_BOOK, KNOWN_GROUP, SESSION_ALIAS, INTERVAL_START)
+            protobufMessage(KNOWN_BOOK, KNOWN_GROUP, SESSION_ALIAS, INTERVAL_START)
         val minRawMessage =
-            rawMessage(KNOWN_BOOK, KNOWN_GROUP, SESSION_ALIAS, INTERVAL_START)
+            protobufRawMessage(KNOWN_BOOK, KNOWN_GROUP, SESSION_ALIAS, INTERVAL_START)
 
         val controller = createController(bookToGroup, kinds)
         controller.actual(MessageGroupBatch.newBuilder().apply {
@@ -366,13 +368,13 @@ internal class TestCradleMessageGroupController {
             )
         )
 
-        val intermediateMessage = message(
+        val intermediateMessage = protobufMessage(
             KNOWN_BOOK,
             KNOWN_GROUP,
             SESSION_ALIAS,
             INTERVAL_START.plus(INTERVAL_HALF_LENGTH),
         )
-        val intermediateRawMessage = rawMessage(
+        val intermediateRawMessage = protobufRawMessage(
             KNOWN_BOOK,
             KNOWN_GROUP,
             SESSION_ALIAS,
@@ -396,13 +398,13 @@ internal class TestCradleMessageGroupController {
             )
         )
 
-        val maxMessage = message(
+        val maxMessage = protobufMessage(
             KNOWN_BOOK,
             KNOWN_GROUP,
             SESSION_ALIAS,
             INTERVAL_END.minusNanos(1),
         )
-        val maxRawMessage = rawMessage(
+        val maxRawMessage = protobufRawMessage(
             KNOWN_BOOK,
             KNOWN_GROUP,
             SESSION_ALIAS,
@@ -456,7 +458,7 @@ internal class TestCradleMessageGroupController {
     @MethodSource("parsedOnly")
     fun `receive several messages after pipeline`(bookToGroup: Map<String, Set<String>>, kinds: Set<MessageKind>) {
         val controller = createController(bookToGroup, kinds)
-        val builder = message(
+        val builder = protobufMessage(
             KNOWN_BOOK,
             KNOWN_GROUP,
             SESSION_ALIAS,
@@ -577,8 +579,8 @@ internal class TestCradleMessageGroupController {
     @MethodSource("allKindsOnly")
     fun `receive both kind of messages`(bookToGroup: Map<String, Set<String>>, kinds: Set<MessageKind>) {
         val controller = createController(bookToGroup, kinds)
-        val raw = rawMessage(KNOWN_BOOK, KNOWN_GROUP, SESSION_ALIAS, INTERVAL_START, 1)
-        val builder = message(
+        val raw = protobufRawMessage(KNOWN_BOOK, KNOWN_GROUP, SESSION_ALIAS, INTERVAL_START, 1)
+        val builder = protobufMessage(
             KNOWN_BOOK,
             KNOWN_GROUP,
             SESSION_ALIAS,

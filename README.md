@@ -1,4 +1,4 @@
-# Description of th2-processor-core-j (0.1.0)
+# Description of th2-processor-core-j (0.2.0)
 
 This is a common processor library which takes care of some features like requesting messages/events from a lw-data-provider (LwDP), subscribing to message queues, verify incoming streams vs response from LwDP, loading processor settings, etc.
 
@@ -30,6 +30,8 @@ Processor core settings can be specified in `custom-config` section.
 **enableStoreState: _false_** - the processor continues work after restart from the interval where it stopped before if this option is true otherwise the processor start from time specified by the **from** option.
 The default value is **false**
 
+**useTransport: _false_** - option to switch between protobuf and transport message formats transferred via MQ 
+
 For example:
 ```yaml
 apiVersion: th2.exactpro.com/v1
@@ -40,6 +42,7 @@ spec:
   custom-config:
     stateSessionAlias: my-processor-state
     enableStoreState: false
+    useTransport: false
 ```
 
 ## Processor crawler mode settings
@@ -256,6 +259,7 @@ spec:
   custom-config:
     stateSessionAlias: my-processor-state
     enableStoreState: false
+    useTransport: false
 
     crawler:
       from: 2021-06-16T12:00:00.00Z
@@ -350,3 +354,50 @@ spec:
           attributes:
             - store
 ```
+
+Here is an example of pins configuration for working in th2 transport mode:
+
+```yaml
+apiVersion: th2.exactpro.com/v1
+kind: Th2Box
+metadata:
+  name: my-processor
+spec:
+  custom-config:
+    useTransport: true
+  pins:
+    grpc:
+      client:
+        - name: to_data_provider
+          service-class: com.exactpro.th2.dataprovider.lw.grpc.DataProviderService
+          linkTo:
+            - box: lw-data-provider
+              pin: server
+    mq:
+      subscribers:
+        - name: messages
+          attributes:
+            - transport-group
+            - in
+        - name: events
+          attributes:
+            - event
+            - in
+      publishers:
+        - name: state
+          attributes:
+            - transport-group
+```
+
+# Release notes
+
+## 0.2.0
+
+### Feature:
++ Provided the mode for th2 transport working  
+
+### Update:
++ bom: `4.5.0`
++ common: `5.7.2-dev`
++ common-utils: `2.2.2-dev`
++ grpc-lw-data-provider: `2.3.0-dev`

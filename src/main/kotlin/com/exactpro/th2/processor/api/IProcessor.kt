@@ -18,17 +18,25 @@ package com.exactpro.th2.processor.api
 
 import com.exactpro.th2.common.grpc.Event
 import com.exactpro.th2.common.grpc.EventID
-import com.exactpro.th2.common.grpc.Message
-import com.exactpro.th2.common.grpc.RawMessage
+import com.exactpro.th2.common.schema.message.impl.rabbitmq.transport.ParsedMessage
 import javax.annotation.concurrent.ThreadSafe
+import com.exactpro.th2.common.grpc.Message as ProtobufMessage
+import com.exactpro.th2.common.grpc.RawMessage as ProtobufRawMessage
+import com.exactpro.th2.common.schema.message.impl.rabbitmq.transport.RawMessage as TransportRawMessage
 
 @ThreadSafe
 interface IProcessor : AutoCloseable {
-    fun handle(intervalEventId: EventID, message: Message) {
-        throw UnsupportedOperationException("Processor $javaClass can't able to process ${Message::class.java.simpleName}")
+    fun handle(intervalEventId: EventID, message: ProtobufMessage) {
+        throw UnsupportedOperationException("Processor $javaClass can't able to process ${ProtobufMessage::class.java.simpleName}")
     }
-    fun handle(intervalEventId: EventID, message: RawMessage) {
-        throw UnsupportedOperationException("Processor $javaClass can't able to process ${RawMessage::class.java.simpleName}")
+    fun handle(intervalEventId: EventID, message: ProtobufRawMessage) {
+        throw UnsupportedOperationException("Processor $javaClass can't able to process ${ProtobufRawMessage::class.java.simpleName}")
+    }
+    fun handle(intervalEventId: EventID, message: ParsedMessage) {
+        throw UnsupportedOperationException("Processor $javaClass can't able to process ${ParsedMessage::class.java.simpleName}")
+    }
+    fun handle(intervalEventId: EventID, message: TransportRawMessage) {
+        throw UnsupportedOperationException("Processor $javaClass can't able to process ${TransportRawMessage::class.java.simpleName}")
     }
     fun handle(intervalEventId: EventID, event: Event) {
         throw UnsupportedOperationException("Processor $javaClass can't able to process ${Event::class.java.simpleName}")

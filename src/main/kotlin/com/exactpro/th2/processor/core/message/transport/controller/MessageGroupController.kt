@@ -14,16 +14,15 @@
  *  limitations under the License.
  */
 
-package com.exactpro.th2.processor.core.message.controller
+package com.exactpro.th2.processor.core.message.transport.controller
 
-import com.exactpro.th2.common.grpc.AnyMessage
-import com.exactpro.th2.common.grpc.AnyMessage.KindCase.MESSAGE
-import com.exactpro.th2.common.grpc.AnyMessage.KindCase.RAW_MESSAGE
 import com.exactpro.th2.common.grpc.EventID
-import com.exactpro.th2.common.grpc.MessageGroup
-import com.exactpro.th2.common.grpc.MessageGroupBatch
-import com.exactpro.th2.common.utils.message.id
-import com.exactpro.th2.common.utils.message.timestamp
+import com.exactpro.th2.common.schema.message.impl.rabbitmq.transport.GroupBatch
+import com.exactpro.th2.common.schema.message.impl.rabbitmq.transport.Message
+import com.exactpro.th2.common.schema.message.impl.rabbitmq.transport.MessageGroup
+import com.exactpro.th2.common.schema.message.impl.rabbitmq.transport.ParsedMessage
+import com.exactpro.th2.common.schema.message.impl.rabbitmq.transport.RawMessage
+import com.exactpro.th2.common.utils.message.transport.toProto
 import com.exactpro.th2.dataprovider.lw.grpc.EventLoadedStatistic
 import com.exactpro.th2.dataprovider.lw.grpc.MessageLoadedStatistic
 import com.exactpro.th2.processor.api.IProcessor
@@ -37,24 +36,24 @@ import javax.annotation.concurrent.ThreadSafe
 internal abstract class MessageGroupController(
     private val processor: IProcessor,
     intervalEventId: EventID
-) : Controller<MessageGroupBatch>(
+) : Controller<GroupBatch>(
     intervalEventId
 ) {
-    override fun actual(batch: MessageGroupBatch) {
+    override fun actual(batch: GroupBatch) {
         updateActualState {
-            for (group in batch.groupsList) {
+            for (group in batch.groups) {
                 runCatching {
-                    updateState(group)
-                    for (anyMessage in group.messagesList) {
+                    updateState(batch, group)
+                    for (anyMessage in group.messages) {
                         runCatching {
-                            updateLastProcessed(anyMessage.timestamp)
+                            updateLastProcessed(anyMessage.id.timestamp)
                             handle(anyMessage)
                         }.onFailure { e ->
-                            throw HandleMessageException(listOf(anyMessage.id), cause = e)
+                            throw HandleMessageException(listOf(anyMessage.id.toProto(batch)), cause = e)
                         }
                     }
                 }.onFailure { e ->
-                    throw HandleMessageException(group.messagesList.map { it.id }, cause = e)
+                    throw HandleMessageException(group.messages.map { it.id.toProto(batch) }, cause = e)
                 }
             }
         }.ifTrue(::signal)
@@ -67,14 +66,14 @@ internal abstract class MessageGroupController(
     override fun expected(loadedStatistic: EventLoadedStatistic) {
         throw UnsupportedOperationException()
     }
-    protected abstract fun updateActualState(func: StateUpdater<MessageGroup>.() -> Unit): Boolean
+    protected abstract fun updateActualState(func: StateUpdater<GroupBatch, MessageGroup>.() -> Unit): Boolean
     protected abstract fun updateExpectedState(loadedStatistic: MessageLoadedStatistic): Boolean
 
-    private fun handle(anyMessage: AnyMessage) {
-        when (anyMessage.kindCase) {
-            MESSAGE -> processor.handle(intervalEventId, anyMessage.message)
-            RAW_MESSAGE -> processor.handle(intervalEventId, anyMessage.rawMessage)
-            else -> error("Unsupported message kind: ${anyMessage.kindCase}")
+    private fun handle(message: Message<*>) {
+        when (message) {
+            is ParsedMessage -> processor.handle(intervalEventId, message)
+            is RawMessage -> processor.handle(intervalEventId, message)
+            else -> error("Unsupported message kind: ${message::class.java}")
         }
     }
 }

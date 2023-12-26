@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Exactpro (Exactpro Systems Limited)
+ * Copyright 2022-2023 Exactpro (Exactpro Systems Limited)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,22 +19,20 @@ package com.exactpro.th2.processor.core
 import com.exactpro.th2.common.grpc.EventID
 import com.exactpro.th2.dataprovider.lw.grpc.EventLoadedStatistic
 import com.exactpro.th2.dataprovider.lw.grpc.MessageLoadedStatistic
-import com.google.protobuf.Message
-import com.google.protobuf.Timestamp
-import com.google.protobuf.util.Timestamps
 import mu.KotlinLogging
+import java.time.Instant
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
 
-abstract class Controller<T: Message>(
+abstract class Controller<T>(
     val intervalEventId: EventID
 ) {
     /**
      * Controller updates this marker on each actual processed message which passed precondition
      */
     @Volatile
-    private var lastProcessedTimestamp: Timestamp = Timestamps.MIN_VALUE
+    private var lastProcessedTimestamp: Instant = Instant.MIN
     private val lock = ReentrantLock()
     private val condition = lock.newCondition()
     @Volatile // the actual method won't be call when collector expected zero incoming messages
@@ -74,7 +72,7 @@ abstract class Controller<T: Message>(
                 } else {
                     K_LOGGER.info {
                         "Controller has been processing actual messages, " +
-                                "previous timestamp ${Timestamps.toString(previous)}, " +
+                                "previous timestamp $previous, " +
                                 "waiting attempt $counter for $time $unit"
                     }
                 }
@@ -83,7 +81,7 @@ abstract class Controller<T: Message>(
 
         return isStateComplete
     }
-    protected fun updateLastProcessed(timestamp: Timestamp) {
+    protected fun updateLastProcessed(timestamp: Instant) {
         lastProcessedTimestamp = timestamp
     }
     protected fun signal() = lock.withLock {

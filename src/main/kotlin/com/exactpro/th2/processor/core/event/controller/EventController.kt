@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Exactpro (Exactpro Systems Limited)
+ * Copyright 2022-2023 Exactpro (Exactpro Systems Limited)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,6 +19,7 @@ package com.exactpro.th2.processor.core.event.controller
 import com.exactpro.th2.common.grpc.Event
 import com.exactpro.th2.common.grpc.EventBatch
 import com.exactpro.th2.common.grpc.EventID
+import com.exactpro.th2.common.util.toInstant
 import com.exactpro.th2.dataprovider.lw.grpc.EventLoadedStatistic
 import com.exactpro.th2.dataprovider.lw.grpc.MessageLoadedStatistic
 import com.exactpro.th2.processor.api.IProcessor
@@ -45,10 +46,10 @@ internal class EventController(
     override fun actual(batch: EventBatch) {
         updateState {
             for (event in batch.eventsList) {
-                updateState(event)
+                updateState(batch, event)
 
                 // TODO: refactor looks strange
-                updateLastProcessed(event.id.startTimestamp)
+                updateLastProcessed(event.id.startTimestamp.toInstant())
                 processor.handle(intervalEventId, event)
             }
         }.ifTrue(::signal)
@@ -63,5 +64,5 @@ internal class EventController(
         super.expected(loadedStatistic)
     }
 
-    private fun updateState(func: StateUpdater<Event>.() -> Unit): Boolean = eventState.plus(func)
+    private fun updateState(func: StateUpdater<EventBatch, Event>.() -> Unit): Boolean = eventState.plus(func)
 }

@@ -14,66 +14,80 @@
  * limitations under the License.
  */
 
-package com.exactpro.th2.processor.core.event
+package com.exactpro.th2.processor.core.message.protobuf
 
 import com.exactpro.th2.common.event.Event
 import com.exactpro.th2.common.event.bean.IRow
 import com.exactpro.th2.common.event.bean.Table
-import com.exactpro.th2.common.grpc.EventBatch
 import com.exactpro.th2.common.grpc.EventID
+import com.exactpro.th2.common.grpc.MessageGroupBatch
 import com.exactpro.th2.common.message.toJson
 import com.exactpro.th2.common.message.toTimestamp
-import com.exactpro.th2.dataprovider.lw.grpc.EventLoadedStatistic
-import com.exactpro.th2.dataprovider.lw.grpc.EventLoadedStatistic.ScopeStat
-import com.exactpro.th2.dataprovider.lw.grpc.EventQueueSearchRequest
+import com.exactpro.th2.dataprovider.lw.grpc.MessageGroupsQueueSearchRequest
+import com.exactpro.th2.dataprovider.lw.grpc.MessageGroupsQueueSearchRequest.BookGroups
+import com.exactpro.th2.dataprovider.lw.grpc.MessageLoadedStatistic
 import com.exactpro.th2.processor.api.IProcessor
 import com.exactpro.th2.processor.core.Context
 import com.exactpro.th2.processor.core.Crawler
-import com.exactpro.th2.processor.core.event.controller.EventController
+import com.exactpro.th2.processor.core.configuration.MessageKind
+import com.exactpro.th2.processor.core.configuration.MessageKind.RAW_MESSAGE
+import com.exactpro.th2.processor.core.message.protobuf.controller.CradleMessageGroupController
 import mu.KotlinLogging
 import java.time.Instant
 
-class EventCrawler(
+//TODO: Extract common part
+internal class CradleMessageGroupCrawler(
     context: Context,
     processor: IProcessor,
-) : Crawler<EventBatch>(
+) : Crawler<MessageGroupBatch>(
     context.commonFactory,
-    context.commonFactory.eventBatchRouter,
+    context.commonFactory.messageRouterMessageGroupBatch,
     context.eventBatcher,
     processor,
     context.processorEventId,
-    context.configuration,
+    context.configuration
 ) {
-    private val bookToScopes: Map<String, Set<String>> = requireNotNull(
-        requireNotNull(crawlerConfiguration.events) {
-            "The `crawler.events` configuration can not be null"
-        }.bookToScopes
+    private val messageKinds: Set<MessageKind> = requireNotNull(crawlerConfiguration.messages).messageKinds
+
+    private val bookToGroups: Map<String, Set<String>> = requireNotNull(
+        requireNotNull(crawlerConfiguration.messages) {
+            "The `crawler.messages` configuration can not be null"
+        }.bookToGroups
     )
 
-    private val bookScopes: List<EventQueueSearchRequest.BookScopes> = bookToScopes.map { (book, scopes) ->
-        EventQueueSearchRequest.BookScopes.newBuilder().apply {
+    private val bookGroups: List<BookGroups> = bookToGroups.map { (book, groups) ->
+        BookGroups.newBuilder().apply {
             bookIdBuilder.apply { name = book }
-            scopes.forEach { scope ->
-                addScopeBuilder().apply { name = scope }
+            groups.forEach { group ->
+                addGroupBuilder().apply { name = group }
             }
         }.build()
     }
     override fun process(from: Instant, to: Instant, intervalEventId: EventID) {
         val fromTimestamp = from.toTimestamp()
         val toTimestamp = to.toTimestamp()
-        controller = EventController(processor, intervalEventId, fromTimestamp, toTimestamp, bookToScopes)
+        controller = CradleMessageGroupController(
+            processor,
+            intervalEventId,
+            fromTimestamp,
+            toTimestamp,
+            messageKinds,
+            bookToGroups
+        )
 
-        val request = EventQueueSearchRequest.newBuilder().apply {
+        val request = MessageGroupsQueueSearchRequest.newBuilder().apply {
             startTimestamp = fromTimestamp
             endTimestamp = toTimestamp
             externalQueue = queue
-            syncInterval = this@EventCrawler.syncInterval
+            syncInterval = this@CradleMessageGroupCrawler.syncInterval
+            sendRawDirectly = messageKinds.contains(RAW_MESSAGE)
+            rawOnly = messageKinds.size == 1 && messageKinds.contains(RAW_MESSAGE)
 
-            addAllEventScopes(bookScopes)
+            addAllMessageGroup(bookGroups)
         }.build()
 
         K_LOGGER.info { "Request ${request.toJson()}" }
-        dataProvider.searchEvents(request)
+        dataProvider.searchMessageGroups(request)
             .also { response ->
                 reportResponse(response, intervalEventId)
                 controller.expected(response)
@@ -82,10 +96,10 @@ class EventCrawler(
                 }
             }
     }
-    private fun reportResponse(response: EventLoadedStatistic, intervalEventId: EventID) {
+    private fun reportResponse(response: MessageLoadedStatistic, intervalEventId: EventID) {
         K_LOGGER.info { "Request ${response.toJson()}" }
         Event.start()
-            .name("Requested events")
+            .name("Requested messages")
             .type(EVENT_TYPE_REQUEST_TO_DATA_PROVIDER)
             .bodyData(Table().apply {
                 type = "Event statistic"
@@ -94,9 +108,10 @@ class EventCrawler(
             .toProto(intervalEventId)
             .also(eventBatcher::onEvent)
     }
+
     companion object {
         private val K_LOGGER = KotlinLogging.logger {}
-        private data class StatisticRow(val book: String, val scope: String, val count: Long): IRow
-        fun toRow(scopeStat: ScopeStat): IRow = StatisticRow(scopeStat.bookId.name, scopeStat.scope.name, scopeStat.count)
+        private data class StatisticRow(val book: String, val group: String, val count: Long): IRow
+        fun toRow(scopeStat: MessageLoadedStatistic.GroupStat): IRow = StatisticRow(scopeStat.bookId.name, scopeStat.group.name, scopeStat.count)
     }
 }

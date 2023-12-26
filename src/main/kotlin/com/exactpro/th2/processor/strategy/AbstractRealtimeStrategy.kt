@@ -18,13 +18,10 @@ package com.exactpro.th2.processor.strategy
 
 import com.exactpro.th2.common.event.Event
 import com.exactpro.th2.common.event.IBodyData
-import com.exactpro.th2.common.grpc.AnyMessage.KindCase.MESSAGE
-import com.exactpro.th2.common.grpc.AnyMessage.KindCase.RAW_MESSAGE
 import com.exactpro.th2.common.grpc.EventID
 import com.exactpro.th2.common.grpc.MessageID
 import com.exactpro.th2.common.schema.message.SubscriberMonitor
 import com.exactpro.th2.common.utils.event.logId
-import com.exactpro.th2.common.utils.message.id
 import com.exactpro.th2.processor.Application
 import com.exactpro.th2.processor.api.IProcessor
 import com.exactpro.th2.processor.core.Context
@@ -34,7 +31,7 @@ import com.exactpro.th2.processor.core.state.RealtimeState
 import com.exactpro.th2.processor.utility.OBJECT_MAPPER
 import mu.KotlinLogging
 
-class RealtimeStrategy(context: Context): AbstractStrategy(context) {
+abstract class AbstractRealtimeStrategy(context: Context): AbstractStrategy(context) {
 
     private val realtimeConfig: RealtimeConfiguration = requireNotNull(context.configuration.realtime) {
         Application.CONFIGURATION_ERROR_PREFIX +
@@ -43,31 +40,14 @@ class RealtimeStrategy(context: Context): AbstractStrategy(context) {
 
     private val eventMonitor: SubscriberMonitor
     private val messageMonitor: SubscriberMonitor
-    private val processor: IProcessor
+    protected val processor: IProcessor
 
     init {
         val state = recoverState(RealtimeState::class.java)
         processor = createProcessor(state?.processorState)
 
         messageMonitor = if (realtimeConfig.enableMessageSubscribtion) {
-            context.commonFactory.messageRouterMessageGroupBatch.subscribe({ _, batch ->
-                val exceptionList = mutableListOf<Throwable>()
-                batch.groupsList.forEach { messageGroup ->
-                    messageGroup.messagesList.forEach { anyMessage ->
-                        runCatching {
-                            when (anyMessage.kindCase) {
-                                MESSAGE -> processor.handle(context.processorEventId, anyMessage.message)
-                                RAW_MESSAGE -> processor.handle(context.processorEventId, anyMessage.rawMessage)
-                                else -> error("Unsupported message kind: ${anyMessage.kindCase}")
-                            }
-                        }.onFailure { e ->
-                            exceptionList.add(e)
-                            reportHandleMessageError(anyMessage.id, e)
-                        }
-                    }
-                }
-                checkAndThrow(exceptionList)
-            }, IN_ATTRIBUTE)
+            subscribeToMessages(context)
         } else { EMPTY_MONITOR }
 
         eventMonitor = if (realtimeConfig.enableEventSubscribtion) {
@@ -87,14 +67,6 @@ class RealtimeStrategy(context: Context): AbstractStrategy(context) {
         readiness.enable()
     }
 
-    private fun checkAndThrow(exceptionList: MutableList<Throwable>) {
-        if (exceptionList.isNotEmpty()) {
-            throw ProcessorException("Handling failure").apply {
-                exceptionList.forEach(this::addSuppressed)
-            }
-        }
-    }
-
     override fun close() {
         super.close()
         runCatching(messageMonitor::unsubscribe).onFailure { e ->
@@ -111,7 +83,17 @@ class RealtimeStrategy(context: Context): AbstractStrategy(context) {
             K_LOGGER.error(e) { "Closing ${processor::class.java.simpleName} failure" }
         }
     }
-    private fun reportHandleMessageError(messageId: MessageID, e: Throwable) {
+
+    protected abstract fun subscribeToMessages(context: Context): SubscriberMonitor
+
+    protected fun checkAndThrow(exceptionList: List<Throwable>) {
+        if (exceptionList.isNotEmpty()) {
+            throw ProcessorException("Handling failure").apply {
+                exceptionList.forEach(this::addSuppressed)
+            }
+        }
+    }
+    protected fun reportHandleMessageError(messageId: MessageID, e: Throwable) {
         createEvent(e)
             .type(MESSAGE_PROCESSING_FAILURE_EVENT_TYPE)
             .messageID(messageId)

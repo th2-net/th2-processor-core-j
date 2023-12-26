@@ -14,15 +14,16 @@
  * limitations under the License.
  */
 
-package com.exactpro.th2.processor.core.message
+package com.exactpro.th2.processor.core.message.transport
 
 import com.exactpro.th2.common.event.Event
 import com.exactpro.th2.common.event.bean.IRow
 import com.exactpro.th2.common.event.bean.Table
 import com.exactpro.th2.processor.core.configuration.MessageKind.RAW_MESSAGE
 import com.exactpro.th2.common.grpc.EventID
-import com.exactpro.th2.common.grpc.MessageGroupBatch
 import com.exactpro.th2.common.message.toJson
+import com.exactpro.th2.common.message.toTimestamp
+import com.exactpro.th2.common.schema.message.impl.rabbitmq.transport.GroupBatch
 import com.exactpro.th2.dataprovider.lw.grpc.MessageGroupsQueueSearchRequest
 import com.exactpro.th2.dataprovider.lw.grpc.MessageGroupsQueueSearchRequest.BookGroups
 import com.exactpro.th2.dataprovider.lw.grpc.MessageLoadedStatistic
@@ -30,16 +31,16 @@ import com.exactpro.th2.processor.api.IProcessor
 import com.exactpro.th2.processor.core.Context
 import com.exactpro.th2.processor.core.Crawler
 import com.exactpro.th2.processor.core.configuration.MessageKind
-import com.exactpro.th2.processor.core.message.controller.CradleMessageGroupController
-import com.google.protobuf.Timestamp
+import com.exactpro.th2.processor.core.message.transport.controller.CradleMessageGroupController
 import mu.KotlinLogging
+import java.time.Instant
 
 internal class CradleMessageGroupCrawler(
     context: Context,
     processor: IProcessor,
-) : Crawler<MessageGroupBatch>(
+) : Crawler<GroupBatch>(
     context.commonFactory,
-    context.commonFactory.messageRouterMessageGroupBatch,
+    context.commonFactory.transportGroupBatchRouter,
     context.eventBatcher,
     processor,
     context.processorEventId,
@@ -61,12 +62,12 @@ internal class CradleMessageGroupCrawler(
             }
         }.build()
     }
-    override fun process(from: Timestamp, to: Timestamp, intervalEventId: EventID) {
+    override fun process(from: Instant, to: Instant, intervalEventId: EventID) {
         controller = CradleMessageGroupController(processor, intervalEventId, from, to, messageKinds, bookToGroups)
 
         val request = MessageGroupsQueueSearchRequest.newBuilder().apply {
-            startTimestamp = from
-            endTimestamp = to
+            startTimestamp = from.toTimestamp()
+            endTimestamp = to.toTimestamp()
             externalQueue = queue
             syncInterval = this@CradleMessageGroupCrawler.syncInterval
             sendRawDirectly = messageKinds.contains(RAW_MESSAGE)

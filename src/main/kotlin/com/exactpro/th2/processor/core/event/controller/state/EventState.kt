@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Exactpro (Exactpro Systems Limited)
+ * Copyright 2022-2023 Exactpro (Exactpro Systems Limited)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,6 +17,7 @@
 package com.exactpro.th2.processor.core.event.controller.state
 
 import com.exactpro.th2.common.grpc.Event
+import com.exactpro.th2.common.grpc.EventBatch
 import com.exactpro.th2.common.message.toJson
 import com.exactpro.th2.common.utils.event.book
 import com.exactpro.th2.common.utils.event.logId
@@ -40,11 +41,11 @@ internal class EventState(
     val isStateEmpty: Boolean
         get() = bookAndScopeToNumber.isEmpty()
 
-    fun plus(func: StateUpdater<Event>.() -> Unit): Boolean {
+    fun plus(func: StateUpdater<EventBatch, Event>.() -> Unit): Boolean {
         val temporaryState = mutableMapOf<StateKey, Long>()
-        object : StateUpdater<Event> {
+        object : StateUpdater<EventBatch, Event> {
             @Suppress("PARAMETER_NAME_CHANGED_ON_OVERRIDE")
-            override fun updateState(event: Event) {
+            override fun updateState(batch: EventBatch, event: Event) {
                 temporaryState.compute(event.toStateKey()) { _, current -> (current ?: 0L) + 1 }
             }
         }.func()

@@ -1,64 +1,52 @@
 /*
- *  Copyright 2022 Exactpro (Exactpro Systems Limited)
+ * Copyright 2022-2023 Exactpro (Exactpro Systems Limited)
  *
- *  Licensed under the Apache License, Version 2.0 (the "License");
- *  you may not use this file except in compliance with the License.
- *  You may obtain a copy of the License at
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
- *  Unless required by applicable law or agreed to in writing, software
- *  distributed under the License is distributed on an "AS IS" BASIS,
- *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *  See the License for the specific language governing permissions and
- *  limitations under the License.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 package com.exactpro.th2.processor.core.state
 
-import com.exactpro.th2.common.event.Event.Status.FAILED
+import com.exactpro.th2.common.event.Event
 import com.exactpro.th2.common.event.bean.IRow
 import com.exactpro.th2.common.event.bean.Table
 import com.exactpro.th2.common.grpc.Direction
 import com.exactpro.th2.common.grpc.EventID
-import com.exactpro.th2.common.grpc.MessageGroup
-import com.exactpro.th2.common.grpc.MessageGroupBatch
-import com.exactpro.th2.common.grpc.RawMessage
-import com.exactpro.th2.common.message.plusAssign
+import com.exactpro.th2.common.grpc.MessageID
 import com.exactpro.th2.common.message.toJson
 import com.exactpro.th2.common.message.toTimestamp
 import com.exactpro.th2.common.schema.message.MessageRouter
 import com.exactpro.th2.common.utils.event.EventBatcher
-import com.exactpro.th2.common.utils.message.id
 import com.exactpro.th2.common.utils.message.logId
 import com.exactpro.th2.dataprovider.lw.grpc.DataProviderService
 import com.exactpro.th2.dataprovider.lw.grpc.MessageGroupResponse
 import com.exactpro.th2.dataprovider.lw.grpc.MessageSearchRequest
-import com.exactpro.th2.dataprovider.lw.grpc.TimeRelation.PREVIOUS
-import com.exactpro.th2.processor.core.state.StateType.Companion.METADATA_STATE_TYPE_PROPERTY
-import com.exactpro.th2.processor.core.state.StateType.END
-import com.exactpro.th2.processor.core.state.StateType.INTERMEDIATE
-import com.exactpro.th2.processor.core.state.StateType.SINGLE
-import com.exactpro.th2.processor.core.state.StateType.START
-import com.exactpro.th2.processor.core.state.StateType.UNKNOWN
+import com.exactpro.th2.dataprovider.lw.grpc.TimeRelation
 import com.exactpro.th2.processor.utility.log
 import com.google.protobuf.Int32Value
 import com.google.protobuf.Timestamp
-import com.google.protobuf.UnsafeByteOperations
 import com.google.protobuf.util.Timestamps
-import com.google.protobuf.util.Timestamps.toString
 import mu.KotlinLogging
 import java.time.Instant
 import javax.annotation.concurrent.NotThreadSafe
 
-typealias EventBuilder = com.exactpro.th2.common.event.Event
+typealias EventBuilder = Event
 
 @NotThreadSafe
-class DataProviderStateStorage(
-    private val messageRouter: MessageRouter<MessageGroupBatch>,
+abstract class AbstractDataProviderStateStorage<T>(
+    private val messageRouter: MessageRouter<T>,
     private val eventBatcher: EventBatcher,
     private val dataProvider: DataProviderService,
-    private val bookName: String,
-    private val stateSessionAlias: String,
+    protected val book: String,
+    protected val stateSessionAlias: String,
     maxMessageSize: Long = METADATA_SIZE + MIN_STATE_SIZE
 ) : IStateStorage {
 
@@ -72,11 +60,11 @@ class DataProviderStateStorage(
     private var sequenceCounter: Long = System.nanoTime()
 
     private val requestBuilder = MessageSearchRequest.newBuilder().apply {
-        searchDirection = PREVIOUS
+        searchDirection = TimeRelation.PREVIOUS
         resultCountLimit = Int32Value.of(COUNT_LIMIT)
         addResponseFormats(RAW_MESSAGE_RESPONSE_FORMAT)
         bookIdBuilder.apply {
-            name = bookName
+            name = book
         }
         addStreamBuilder().apply {
             name = stateSessionAlias
@@ -103,16 +91,16 @@ class DataProviderStateStorage(
                 }
             }
         }.map(::mapStateTypeToMessage)
-        .dropWhile { (stateType, _) -> !(stateType == SINGLE || stateType == END) }
+        .dropWhile { (stateType, _) -> !(stateType == StateType.SINGLE || stateType == StateType.END) }
         .forEach { pair ->
             val (stateType, response) = pair
             K_LOGGER.debug { "Process raw response ${response.toJson()}" }
             when (stateType) {
-                SINGLE -> {
+                StateType.SINGLE -> {
                     reportStateLoaded(parentEventId, pair)
                     return response.bodyRaw.toByteArray()
                 }
-                END, INTERMEDIATE, START -> {
+                StateType.END, StateType.INTERMEDIATE, StateType.START -> {
                     if (state.checkAndModify(pair)) {
                         val list: List<Byte> =
                             state.reversed().flatMap { (_, message) -> message.bodyRaw.toByteArray().asSequence() }
@@ -120,7 +108,7 @@ class DataProviderStateStorage(
                         return ByteArray(list.size).apply { list.forEachIndexed(this::set) }
                     }
                 }
-                UNKNOWN -> {
+                StateType.UNKNOWN -> {
                     reportSkipState(parentEventId, state, pair)
                     state.clear()
                 }
@@ -131,8 +119,8 @@ class DataProviderStateStorage(
     }
 
     override fun saveState(parentEventId: EventID, state: ByteArray) {
-        val stateTimestamp = Instant.now().toTimestamp()
-        val batches = mutableListOf<MessageGroupBatch>()
+        val stateTimestamp = Instant.now()
+        val batches = mutableListOf<T>()
         if (state.size > stateSize) {
             val parts = state.asSequence()
                 .chunked(stateSize.toInt()) //FIXME: implement another approach supported long
@@ -140,30 +128,30 @@ class DataProviderStateStorage(
 
             parts.forEachIndexed { index, bytes ->
                 val stateType = when(index) {
-                    0               -> START
-                    parts.lastIndex -> END
-                    else            -> INTERMEDIATE
+                    0               -> StateType.START
+                    parts.lastIndex -> StateType.END
+                    else            -> StateType.INTERMEDIATE
                 }
                 batches.add(bytes.toByteArray().createMessageBatch(
                     stateTimestamp,
                     stateType,
                     sequenceCounter++,
-                    bookName,
-                    stateSessionAlias
                 ))
             }
         } else {
             batches.add(state.createMessageBatch(
                 stateTimestamp,
-                SINGLE,
+                StateType.SINGLE,
                 sequenceCounter++,
-                bookName,
-                stateSessionAlias
             ))
         }
         batches.forEach(messageRouter::sendAll)
         reportStateSaved(parentEventId, batches)
     }
+
+    internal abstract fun ByteArray.createMessageBatch(stateTimestamp: Instant, stateType: StateType, sequence: Long): T
+
+    protected abstract fun T.messageIds(): List<MessageID>
 
     private fun reportEmptyStateLoaded(processorEventId: EventID) {
         eventBatcher.onEvent(
@@ -184,7 +172,7 @@ class DataProviderStateStorage(
             EventBuilder.start().apply {
                 name("Drop broken state with size ${state.size} and skipped unknown message ${pair.log}")
                 type(TYPE_LOAD_STATE)
-                status(FAILED)
+                status(Event.Status.FAILED)
                 bodyData(state.toTable("Broken state"))
                 bodyData(pair.toTable("Unknown state type"))
                 state.forEach { (_, response) -> messageID(response.messageId) }
@@ -208,19 +196,12 @@ class DataProviderStateStorage(
         )
     }
 
-    private fun reportStateSaved(intervalEventId: EventID, batches: MutableList<MessageGroupBatch>) {
+    private fun reportStateSaved(intervalEventId: EventID, batches: List<T>) {
         eventBatcher.onEvent(
             EventBuilder.start().apply {
-                var messages = 0
-                batches.forEach { batch ->
-                    batch.groupsList.asSequence()
-                        .flatMap(MessageGroup::getMessagesList)
-                        .forEach { anyMessage ->
-                            messages++
-                            messageID(anyMessage.id)
-                        }
-                }
-                name("Published state via $messages messages in ${batches.size} batches")
+                val messageIds: List<MessageID> = batches.flatMap { it.messageIds() }
+                messageIds.forEach(this::messageID)
+                name("Published state via ${messageIds.size} messages in ${batches.size} batches")
                 type("Save state")
             }.toProto(intervalEventId)
             .log(K_LOGGER)
@@ -234,7 +215,7 @@ class DataProviderStateStorage(
 
     companion object {
         private val K_LOGGER = KotlinLogging.logger { }
-        private val PROPERTY_SIZE: Long = (METADATA_STATE_TYPE_PROPERTY.length + StateType.values().maxOf { it.name.length }).toLong()
+        private val PROPERTY_SIZE: Long = (StateType.METADATA_STATE_TYPE_PROPERTY.length + StateType.values().maxOf { it.name.length }).toLong()
 
         private const val TYPE_LOAD_STATE = "Load state"
         private const val RAW_MESSAGE_RESPONSE_FORMAT = "BASE_64"
@@ -243,37 +224,12 @@ class DataProviderStateStorage(
         const val MIN_STATE_SIZE = 256 * 1_024
         val METADATA_SIZE = PROPERTY_SIZE
 
-        private fun ByteArray.createMessageBatch(
-            stateTimestamp: Timestamp,
-            stateType: StateType,
-            sequence: Long,
-            bookName: String,
-            sessionAlias: String,
-        ): MessageGroupBatch = MessageGroupBatch.newBuilder().apply {
-            addGroupsBuilder().apply {
-                this += RawMessage.newBuilder().apply {
-                    body = UnsafeByteOperations.unsafeWrap(this@createMessageBatch)
-                    metadataBuilder.apply {
-                        putProperties(METADATA_STATE_TYPE_PROPERTY, stateType.name)
-                        idBuilder.apply {
-                            this.bookName = bookName
-                            this.timestamp = stateTimestamp
-                            this.direction = Direction.SECOND
-                            this.sequence = sequence
-                            connectionIdBuilder.apply {
-                                this.sessionAlias = sessionAlias
-                            }
-                        }
-                    }
-                }
-            }
-        }.build()
         private fun MutableList<Pair<StateType, MessageGroupResponse>>.checkAndModify(
             pair: Pair<StateType, MessageGroupResponse>
         ): Boolean {
             val (statusType, message) = pair
             when(statusType) {
-                START, INTERMEDIATE -> {
+                StateType.START, StateType.INTERMEDIATE -> {
                     if (isEmpty()) {
                         K_LOGGER.warn { "Reversed state can't be start from ${pair.log} message" } //FIXME: publish as event
                     } else {
@@ -294,12 +250,12 @@ class DataProviderStateStorage(
                         }
 
                         add(pair)
-                        if (statusType == START) {
+                        if (statusType == StateType.START) {
                             return true
                         }
                     }
                 }
-                END -> {
+                StateType.END -> {
                     if (isNotEmpty()) {
                         K_LOGGER.warn {
                             "Dropped uncompleted state ${reversed().logState}, current message ${pair.log}"
@@ -315,7 +271,7 @@ class DataProviderStateStorage(
         }
 
         private fun mapStateTypeToMessage(message: MessageGroupResponse) =
-            StateType.parse(message.messagePropertiesMap[METADATA_STATE_TYPE_PROPERTY]) to message
+            StateType.parse(message.messagePropertiesMap[StateType.METADATA_STATE_TYPE_PROPERTY]) to message
 
         private fun List<Pair<StateType, MessageGroupResponse>>.toTable(tableType: String): Table = Table().apply {
             type = tableType
@@ -333,7 +289,7 @@ class DataProviderStateStorage(
             get() = joinToString(",", "[", "]") { pair -> pair.log }
 
         private val Pair<StateType, MessageGroupResponse>.log: String
-            get() = "${toString(second.messageId.timestamp)} - ${second.messageId.logId} ($first)"
+            get() = "${Timestamps.toString(second.messageId.timestamp)} - ${second.messageId.logId} ($first)"
 
         private data class StateRow(val type: StateType, val messageId: String): IRow
     }
