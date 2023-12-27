@@ -358,12 +358,12 @@ spec:
 Here is an example of pins configuration for working in th2 transport mode:
 
 ```yaml
-apiVersion: th2.exactpro.com/v1
+apiVersion: th2.exactpro.com/v2
 kind: Th2Box
 metadata:
   name: my-processor
 spec:
-  custom-config:
+  customConfig:
     useTransport: true
   pins:
     grpc:
