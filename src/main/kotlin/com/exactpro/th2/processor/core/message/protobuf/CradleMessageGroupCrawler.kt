@@ -16,102 +16,32 @@
 
 package com.exactpro.th2.processor.core.message.protobuf
 
-import com.exactpro.th2.common.event.Event
-import com.exactpro.th2.common.event.bean.IRow
-import com.exactpro.th2.common.event.bean.Table
 import com.exactpro.th2.common.grpc.EventID
 import com.exactpro.th2.common.grpc.MessageGroupBatch
-import com.exactpro.th2.common.message.toJson
 import com.exactpro.th2.common.message.toTimestamp
-import com.exactpro.th2.dataprovider.lw.grpc.MessageGroupsQueueSearchRequest
-import com.exactpro.th2.dataprovider.lw.grpc.MessageGroupsQueueSearchRequest.BookGroups
-import com.exactpro.th2.dataprovider.lw.grpc.MessageLoadedStatistic
 import com.exactpro.th2.processor.api.IProcessor
 import com.exactpro.th2.processor.core.Context
-import com.exactpro.th2.processor.core.Crawler
-import com.exactpro.th2.processor.core.configuration.MessageKind
-import com.exactpro.th2.processor.core.configuration.MessageKind.RAW_MESSAGE
+import com.exactpro.th2.processor.core.Controller
+import com.exactpro.th2.processor.core.message.AbstractMessageCrawler
 import com.exactpro.th2.processor.core.message.protobuf.controller.CradleMessageGroupController
-import mu.KotlinLogging
 import java.time.Instant
 
-//TODO: Extract common part
 internal class CradleMessageGroupCrawler(
     context: Context,
     processor: IProcessor,
-) : Crawler<MessageGroupBatch>(
-    context.commonFactory,
-    context.commonFactory.messageRouterMessageGroupBatch,
-    context.eventBatcher,
+) : AbstractMessageCrawler<MessageGroupBatch>(
+    context,
     processor,
-    context.processorEventId,
-    context.configuration
+    context.commonFactory.messageRouterMessageGroupBatch,
 ) {
-    private val messageKinds: Set<MessageKind> = requireNotNull(crawlerConfiguration.messages).messageKinds
-
-    private val bookToGroups: Map<String, Set<String>> = requireNotNull(
-        requireNotNull(crawlerConfiguration.messages) {
-            "The `crawler.messages` configuration can not be null"
-        }.bookToGroups
-    )
-
-    private val bookGroups: List<BookGroups> = bookToGroups.map { (book, groups) ->
-        BookGroups.newBuilder().apply {
-            bookIdBuilder.apply { name = book }
-            groups.forEach { group ->
-                addGroupBuilder().apply { name = group }
-            }
-        }.build()
-    }
-    override fun process(from: Instant, to: Instant, intervalEventId: EventID) {
-        val fromTimestamp = from.toTimestamp()
-        val toTimestamp = to.toTimestamp()
-        controller = CradleMessageGroupController(
+    override fun createController(intervalEventId: EventID, from: Instant, to: Instant): Controller<MessageGroupBatch> {
+        return CradleMessageGroupController(
             processor,
             intervalEventId,
-            fromTimestamp,
-            toTimestamp,
+            from.toTimestamp(),
+            to.toTimestamp(),
             messageKinds,
             bookToGroups
         )
-
-        val request = MessageGroupsQueueSearchRequest.newBuilder().apply {
-            startTimestamp = fromTimestamp
-            endTimestamp = toTimestamp
-            externalQueue = queue
-            syncInterval = this@CradleMessageGroupCrawler.syncInterval
-            sendRawDirectly = messageKinds.contains(RAW_MESSAGE)
-            rawOnly = messageKinds.size == 1 && messageKinds.contains(RAW_MESSAGE)
-
-            addAllMessageGroup(bookGroups)
-        }.build()
-
-        K_LOGGER.info { "Request ${request.toJson()}" }
-        dataProvider.searchMessageGroups(request)
-            .also { response ->
-                reportResponse(response, intervalEventId)
-                controller.expected(response)
-                check(controller.await(awaitTimeout, awaitUnit)) {
-                    "Quantification failure after ($awaitTimeout:$awaitUnit waiting, controller $controller)"
-                }
-            }
-    }
-    private fun reportResponse(response: MessageLoadedStatistic, intervalEventId: EventID) {
-        K_LOGGER.info { "Request ${response.toJson()}" }
-        Event.start()
-            .name("Requested messages")
-            .type(EVENT_TYPE_REQUEST_TO_DATA_PROVIDER)
-            .bodyData(Table().apply {
-                type = "Event statistic"
-                fields = response.statList.map(::toRow)
-            })
-            .toProto(intervalEventId)
-            .also(eventBatcher::onEvent)
-    }
-
-    companion object {
-        private val K_LOGGER = KotlinLogging.logger {}
-        private data class StatisticRow(val book: String, val group: String, val count: Long): IRow
-        fun toRow(scopeStat: MessageLoadedStatistic.GroupStat): IRow = StatisticRow(scopeStat.bookId.name, scopeStat.group.name, scopeStat.count)
     }
 }

@@ -16,25 +16,30 @@
 
 package com.exactpro.th2.processor.core.message.protobuf.controller
 
+import com.exactpro.th2.common.grpc.AnyMessage
 import com.exactpro.th2.common.grpc.EventID
 import com.exactpro.th2.common.grpc.MessageGroup
 import com.exactpro.th2.common.grpc.MessageGroupBatch
+import com.exactpro.th2.common.util.toInstant
+import com.exactpro.th2.common.utils.message.id
+import com.exactpro.th2.common.utils.message.timestamp
+import com.exactpro.th2.dataprovider.lw.grpc.EventLoadedStatistic
 import com.exactpro.th2.dataprovider.lw.grpc.MessageLoadedStatistic
 import com.exactpro.th2.processor.api.IProcessor
+import com.exactpro.th2.processor.core.Controller
+import com.exactpro.th2.processor.core.HandleMessageException
 import com.exactpro.th2.processor.core.configuration.MessageKind
-import com.exactpro.th2.processor.core.message.protobuf.controller.state.CradleMessageGroupState
-import com.exactpro.th2.processor.core.state.StateUpdater
+import com.exactpro.th2.processor.utility.ifTrue
 import com.google.protobuf.Timestamp
 
 internal class CradleMessageGroupController(
-    processor: IProcessor,
+    private val processor: IProcessor,
     intervalEventId: EventID,
     startTime: Timestamp,
     endTime: Timestamp,
     kinds: Set<MessageKind>,
     bookToGroups: Map<String, Set<String>>
-) : MessageGroupController(
-    processor,
+) : Controller<MessageGroupBatch> (
     intervalEventId
 ) {
     private val cradleMessageGroupState = CradleMessageGroupState(startTime, endTime, kinds.map(MessageKind::grpcKind).toSet(), bookToGroups)
@@ -42,7 +47,43 @@ internal class CradleMessageGroupController(
     override val isStateComplete: Boolean
         get() = super.isStateComplete && cradleMessageGroupState.isStateEmpty
 
-    override fun updateActualState(func: StateUpdater<MessageGroupBatch, MessageGroup>.() -> Unit): Boolean = cradleMessageGroupState.plus(func)
+    override fun actual(batch: MessageGroupBatch) {
+        var needSignal = false
+        for (group in batch.groupsList) {
+            runCatching {
+                needSignal = needSignal or updateActualState(batch, group)
+                for (anyMessage in group.messagesList) {
+                    runCatching {
+                        updateLastProcessed(anyMessage.timestamp.toInstant())
+                        handle(anyMessage)
+                    }.onFailure { e ->
+                        throw HandleMessageException(listOf(anyMessage.id), cause = e)
+                    }
+                }
+            }.onFailure { e ->
+                throw HandleMessageException(group.messagesList.map { it.id }, cause = e)
+            }
+        }
+        needSignal.ifTrue(::signal)
+    }
+    override fun expected(loadedStatistic: MessageLoadedStatistic) {
+        updateExpectedState(loadedStatistic).ifTrue(::signal)
+        super.expected(loadedStatistic)
+    }
 
-    override fun updateExpectedState(loadedStatistic: MessageLoadedStatistic): Boolean = cradleMessageGroupState.minus(loadedStatistic)
+    override fun expected(loadedStatistic: EventLoadedStatistic) {
+        throw UnsupportedOperationException()
+    }
+
+    private fun updateActualState(batch: MessageGroupBatch, group: MessageGroup): Boolean = cradleMessageGroupState.plus(batch, group)
+
+    private fun updateExpectedState(loadedStatistic: MessageLoadedStatistic): Boolean = cradleMessageGroupState.minus(loadedStatistic)
+
+    private fun handle(anyMessage: AnyMessage) {
+        when (anyMessage.kindCase) {
+            AnyMessage.KindCase.MESSAGE -> processor.handle(intervalEventId, anyMessage.message)
+            AnyMessage.KindCase.RAW_MESSAGE -> processor.handle(intervalEventId, anyMessage.rawMessage)
+            else -> error("Unsupported message kind: ${anyMessage.kindCase}")
+        }
+    }
 }

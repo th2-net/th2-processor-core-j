@@ -17,16 +17,34 @@
 package com.exactpro.th2.processor.core
 
 import com.exactpro.th2.common.grpc.MessageID
+import com.exactpro.th2.common.schema.message.impl.rabbitmq.transport.MessageId
+import com.exactpro.th2.common.utils.message.transport.toProto
 
-open class HandleMessageException(
-    val messageIds: List<MessageID>,
-    message: String? = null,
-    cause: Throwable? = null,
-    enableSuppression: Boolean = true,
-    writableStackTrace: Boolean = true,
-) : ProcessorException(
-    message,
-    cause,
-    enableSuppression,
-    writableStackTrace,
-)
+open class HandleMessageException : ProcessorException {
+    val messageIds: List<MessageID>
+
+    constructor(
+        messageIds: List<MessageID>,
+        message: String? = null,
+        cause: Throwable? = null,
+        enableSuppression: Boolean = true,
+        writableStackTrace: Boolean = true
+    ) : super(
+        message,
+        cause,
+        enableSuppression,
+        writableStackTrace,
+    ) {
+        this.messageIds = messageIds
+    }
+
+    constructor(
+        book: String,
+        sessionGroup: String,
+        messageIds: List<MessageId>,
+        message: String? = null,
+        cause: Throwable? = null,
+        enableSuppression: Boolean = true,
+        writableStackTrace: Boolean = true
+    ) : this(messageIds.map { it.toProto(book, sessionGroup) }, message, cause, enableSuppression, writableStackTrace)
+}

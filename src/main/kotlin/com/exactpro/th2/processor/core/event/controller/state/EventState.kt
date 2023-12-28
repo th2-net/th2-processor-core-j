@@ -17,13 +17,11 @@
 package com.exactpro.th2.processor.core.event.controller.state
 
 import com.exactpro.th2.common.grpc.Event
-import com.exactpro.th2.common.grpc.EventBatch
 import com.exactpro.th2.common.message.toJson
 import com.exactpro.th2.common.utils.event.book
 import com.exactpro.th2.common.utils.event.logId
 import com.exactpro.th2.common.utils.event.scope
 import com.exactpro.th2.dataprovider.lw.grpc.EventLoadedStatistic
-import com.exactpro.th2.processor.core.state.StateUpdater
 import com.exactpro.th2.processor.utility.check
 import com.exactpro.th2.processor.utility.compareTo
 import com.google.protobuf.Timestamp
@@ -41,30 +39,20 @@ internal class EventState(
     val isStateEmpty: Boolean
         get() = bookAndScopeToNumber.isEmpty()
 
-    fun plus(func: StateUpdater<EventBatch, Event>.() -> Unit): Boolean {
-        val temporaryState = mutableMapOf<StateKey, Long>()
-        object : StateUpdater<EventBatch, Event> {
-            @Suppress("PARAMETER_NAME_CHANGED_ON_OVERRIDE")
-            override fun updateState(batch: EventBatch, event: Event) {
-                temporaryState.compute(event.toStateKey()) { _, current -> (current ?: 0L) + 1 }
-            }
-        }.func()
-
+    fun plus(event: Event): Boolean {
         var needCheck = false
-        temporaryState.forEach { (group, count) ->
-            bookAndScopeToNumber.compute(group) { _, previous ->
-                when (val result = (previous ?: 0L) + count) {
-                    0L -> {
-                        needCheck = true
-                        null
-                    }
-
-                    else -> result
+        val key = event.toStateKey()
+        bookAndScopeToNumber.compute(key) { _, previous ->
+            when (val result = (previous ?: 0L) + 1) {
+                0L -> {
+                    needCheck = true
+                    null
                 }
+                else -> result
             }
         }
 
-        K_LOGGER.debug { "Plus operation executed: delta = $temporaryState, state = $bookAndScopeToNumber, need check = $needCheck" }
+        K_LOGGER.debug { "Plus operation executed: state = $bookAndScopeToNumber, need check = $needCheck" }
         return needCheck && isStateEmpty
     }
 

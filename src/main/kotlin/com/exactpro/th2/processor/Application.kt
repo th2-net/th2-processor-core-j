@@ -137,9 +137,9 @@ class Application(
                 }
                 realtime != null -> if (useTransport) {
                     TransportRealtimeStrategy(context)
-                } else ProtobufRealtimeStrategy(
-                    context
-                )
+                } else {
+                    ProtobufRealtimeStrategy(context)
+                }
                 else -> error("$CONFIGURATION_ERROR_PREFIX processor work mode is unknown")
             }
         }

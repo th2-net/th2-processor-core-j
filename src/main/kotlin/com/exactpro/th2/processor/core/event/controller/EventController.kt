@@ -25,7 +25,6 @@ import com.exactpro.th2.dataprovider.lw.grpc.MessageLoadedStatistic
 import com.exactpro.th2.processor.api.IProcessor
 import com.exactpro.th2.processor.core.Controller
 import com.exactpro.th2.processor.core.event.controller.state.EventState
-import com.exactpro.th2.processor.core.state.StateUpdater
 import com.exactpro.th2.processor.utility.ifTrue
 import com.google.protobuf.Timestamp
 
@@ -44,15 +43,14 @@ internal class EventController(
         get() = super.isStateComplete && eventState.isStateEmpty
 
     override fun actual(batch: EventBatch) {
-        updateState {
-            for (event in batch.eventsList) {
-                updateState(batch, event)
+        var needSignal  = false
+        for (event in batch.eventsList) {
+            needSignal = needSignal or updateState(event)
 
-                // TODO: refactor looks strange
-                updateLastProcessed(event.id.startTimestamp.toInstant())
-                processor.handle(intervalEventId, event)
-            }
-        }.ifTrue(::signal)
+            updateLastProcessed(event.id.startTimestamp.toInstant())
+            processor.handle(intervalEventId, event)
+        }
+        needSignal.ifTrue(::signal)
     }
 
     override fun expected(loadedStatistic: MessageLoadedStatistic) {
@@ -64,5 +62,5 @@ internal class EventController(
         super.expected(loadedStatistic)
     }
 
-    private fun updateState(func: StateUpdater<EventBatch, Event>.() -> Unit): Boolean = eventState.plus(func)
+    private fun updateState(event: Event): Boolean = eventState.plus(event)
 }
