@@ -43,7 +43,7 @@ internal class CradleMessageGroupState(
     override fun MessageGroup.toStateKey(batch: MessageGroupBatch): StateKey {
         check()
 
-        val firstMessage = requireNotNull(messagesList.first()) {
+        val firstMessage = requireNotNull(messagesList.firstOrNull()) {
             "Message group can't be empty"
         }
 
@@ -62,7 +62,7 @@ internal class CradleMessageGroupState(
     }
 
     private fun MessageGroup.check(): MessageGroup {
-        val firstMessage = requireNotNull(messagesList.first()) {
+        val firstMessage = requireNotNull(messagesList.firstOrNull()) {
             "Message group can't be empty"
         }
         val timestamp = firstMessage.timestamp

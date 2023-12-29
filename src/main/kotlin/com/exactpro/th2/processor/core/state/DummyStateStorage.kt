@@ -20,11 +20,7 @@ import com.exactpro.th2.common.grpc.EventID
 
 class DummyStateStorage: IStateStorage {
 
-    override fun loadState(parentEventId: EventID): ByteArray? {
-        throw UnsupportedOperationException()
-    }
+    override fun loadState(parentEventId: EventID): ByteArray = throw UnsupportedOperationException()
 
-    override fun saveState(parentEventId: EventID, state: ByteArray) {
-        throw UnsupportedOperationException()
-    }
+    override fun saveState(parentEventId: EventID, state: ByteArray): Unit = throw UnsupportedOperationException()
 }

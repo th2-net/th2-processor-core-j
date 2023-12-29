@@ -51,7 +51,8 @@ internal class CradleMessageGroupController(
         var needSignal = false
         for (group in batch.groupsList) {
             runCatching {
-                needSignal = needSignal or updateActualState(batch, group)
+                val updateResult = updateActualState(batch, group)
+                needSignal = needSignal or updateResult
                 for (anyMessage in group.messagesList) {
                     runCatching {
                         updateLastProcessed(anyMessage.timestamp.toInstant())
@@ -71,9 +72,7 @@ internal class CradleMessageGroupController(
         super.expected(loadedStatistic)
     }
 
-    override fun expected(loadedStatistic: EventLoadedStatistic) {
-        throw UnsupportedOperationException()
-    }
+    override fun expected(loadedStatistic: EventLoadedStatistic): Unit = throw UnsupportedOperationException()
 
     private fun updateActualState(batch: MessageGroupBatch, group: MessageGroup): Boolean = cradleMessageGroupState.plus(batch, group)
 

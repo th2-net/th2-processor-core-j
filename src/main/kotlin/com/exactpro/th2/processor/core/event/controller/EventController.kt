@@ -45,7 +45,8 @@ internal class EventController(
     override fun actual(batch: EventBatch) {
         var needSignal  = false
         for (event in batch.eventsList) {
-            needSignal = needSignal or updateState(event)
+            val updateResult = updateState(event)
+            needSignal = needSignal or updateResult
 
             updateLastProcessed(event.id.startTimestamp.toInstant())
             processor.handle(intervalEventId, event)
@@ -53,9 +54,7 @@ internal class EventController(
         needSignal.ifTrue(::signal)
     }
 
-    override fun expected(loadedStatistic: MessageLoadedStatistic) {
-        throw UnsupportedOperationException()
-    }
+    override fun expected(loadedStatistic: MessageLoadedStatistic): Unit = throw UnsupportedOperationException()
 
     override fun expected(loadedStatistic: EventLoadedStatistic) {
         eventState.minus(loadedStatistic).ifTrue(::signal)
