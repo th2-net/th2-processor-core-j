@@ -14,10 +14,10 @@
  * limitations under the License.
  */
 
-package com.exactpro.th2.processor.core.message.protobuf
+package com.exactpro.th2.processor.core.message.transport
 
-import com.exactpro.th2.common.grpc.MessageGroupBatch
 import com.exactpro.th2.common.schema.message.MessageRouter
+import com.exactpro.th2.common.schema.message.impl.rabbitmq.transport.GroupBatch
 import com.exactpro.th2.processor.core.configuration.Configuration
 import com.exactpro.th2.processor.core.configuration.CrawlerConfiguration
 import com.exactpro.th2.processor.core.configuration.MessageConfiguration
@@ -27,13 +27,13 @@ import org.mockito.kotlin.any
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.whenever
 
-internal class TestCradleMessageGroupCrawler: AbstractGroupMessageCrawlerTest<MessageGroupBatch>() {
-    private val messageRouter = mock<MessageRouter<MessageGroupBatch>> {
+internal class TestCradleMessageGroupCrawler: AbstractGroupMessageCrawlerTest<GroupBatch>() {
+    private val messageRouter = mock<MessageRouter<GroupBatch>> {
         on { subscribeExclusive(any()) }.thenReturn(monitor)
     }
 
     init {
-        whenever(commonFactory.messageRouterMessageGroupBatch).thenReturn(messageRouter)
+        whenever(commonFactory.transportGroupBatchRouter).thenReturn(messageRouter)
     }
 
     override fun createCrawler(kinds: Set<MessageKind>): CradleMessageGroupCrawler {

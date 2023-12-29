@@ -24,10 +24,12 @@ import com.exactpro.th2.common.message.plusAssign
 import com.exactpro.th2.common.schema.message.impl.rabbitmq.transport.Direction
 import com.exactpro.th2.common.schema.message.impl.rabbitmq.transport.ParsedMessage
 import com.exactpro.th2.common.utils.message.toTimestamp
+import com.exactpro.th2.processor.core.configuration.MessageKind
 import java.time.Instant
 import java.util.concurrent.atomic.AtomicLong
 import kotlin.random.Random
 import com.exactpro.th2.common.grpc.RawMessage as ProtobufRawMessage
+import com.exactpro.th2.common.schema.message.impl.rabbitmq.transport.Message as TramsportMessage
 import com.exactpro.th2.common.schema.message.impl.rabbitmq.transport.RawMessage as TransportRawMessage
 
 const val STATE_SESSION_ALIAS = "state-session-alias"
@@ -99,6 +101,17 @@ fun protobufRawMessage(
         }
     }
 }.build()
+
+fun message(
+    kind: MessageKind,
+    sessionAlias: String,
+    timestamp: Instant,
+    sequence: Long = SEQUENCE_COUNTER.incrementAndGet()
+): TramsportMessage<*> = when (kind) {
+    MessageKind.MESSAGE -> transportMessage(sessionAlias, timestamp, sequence)
+    MessageKind.RAW_MESSAGE -> transportRawMessage(sessionAlias, timestamp, sequence)
+    else -> error("Unsupported kind $kind")
+}
 
 fun transportMessage(
     sessionAlias: String,

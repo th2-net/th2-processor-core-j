@@ -29,7 +29,6 @@ import com.google.protobuf.util.Timestamps
 import mu.KotlinLogging
 import java.util.concurrent.ConcurrentHashMap
 
-//TODO: Extract common part
 internal class EventState(
     private val startTime: Timestamp,
     private val endTime: Timestamp,
