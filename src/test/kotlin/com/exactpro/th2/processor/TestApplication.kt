@@ -66,6 +66,11 @@ import org.mockito.kotlin.same
 import org.mockito.kotlin.times
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
+import strikt.api.expectThat
+import strikt.assertions.contains
+import strikt.assertions.isEqualTo
+import strikt.assertions.single
+import strikt.assertions.withElementAt
 import java.time.Duration
 import java.time.Instant
 import com.exactpro.th2.common.grpc.RawMessage as ProtobufRawMessage
@@ -134,7 +139,7 @@ class TestApplication {
     }
 
     @Nested
-    inner class TransportTest: AbstractTest {
+    inner class TransportTest : AbstractTest {
         @Test
         @Timeout(10)
         override fun `test event, message, raw message crawling`() {
@@ -188,8 +193,7 @@ class TestApplication {
 
         private fun verifyCrawlerRouters() {
             verify(transportMessageRouter, times(1)).sendAll(any())
-            //TODO: processor, start processing, end processing, processing complete, ?, state loading
-            verify(eventRouter, times(6)).sendAll(any())
+            verifyEventRouter()
         }
 
         private fun mockMessages() {
@@ -231,7 +235,7 @@ class TestApplication {
     }
 
     @Nested
-    inner class ProtobufTest: AbstractTest {
+    inner class ProtobufTest : AbstractTest {
         @Test
         @Timeout(10)
         override fun `test event, message, raw message crawling`() {
@@ -285,8 +289,7 @@ class TestApplication {
 
         private fun verifyCrawlerRouters() {
             verify(protobufMessageRouter, times(1)).sendAll(any())
-            //TODO: processor, start processing, end processing, processing complete, ?, state loading
-            verify(eventRouter, times(6)).sendAll(any())
+            verifyEventRouter()
         }
 
         private fun mockMessages() {
@@ -327,15 +330,80 @@ class TestApplication {
         }
     }
 
+    private fun verifyEventRouter() {
+        val captor = argumentCaptor<EventBatch> { }
+        verify(eventRouter, times(6).description("Publish events")).sendAll(captor.capture())
+        val processorEventId = captor.allValues.getOrNull(0)?.eventsList?.getOrNull(0)?.id
+        val intervalEventId = captor.allValues.getOrNull(1)?.eventsList?.getOrNull(0)?.id
+        expectThat(captor.allValues) {
+            withElementAt(0) {
+                get { eventsList }.single().and {
+                    get { id }.apply {
+                        get { bookName }.isEqualTo(ROOT_EVENT_ID.bookName)
+                        get { scope }.isEqualTo(ROOT_EVENT_ID.scope)
+                    }
+                    get { parentId }.isEqualTo(ROOT_EVENT_ID)
+                    get { name }.contains(Regex("Processor started $ISO_DATE_TIME_REGEX"))
+                    get { type }.isEqualTo("Processor start")
+                    get { body.toStringUtf8() }.isEqualTo("[]")
+                }
+            }
+            withElementAt(1) {
+                get { eventsList }.single().and {
+                    get { id }.apply {
+                        get { bookName }.isEqualTo(ROOT_EVENT_ID.bookName)
+                        get { scope }.isEqualTo(ROOT_EVENT_ID.scope)
+                    }
+                    get { hasParentId() }.isEqualTo(true)
+                    get { parentId }.isEqualTo(processorEventId)
+                    get { name }.contains(Regex("Process interval \\[$ISO_DATE_TIME_REGEX - $ISO_DATE_TIME_REGEX\\)"))
+                    get { type }.isEqualTo("Process interval")
+                    get { body.toStringUtf8() }.isEqualTo("[]")
+                }
+            }
+            withElementAt(2) {
+                get { eventsList }.single().and {
+                    get { id }.apply {
+                        get { bookName }.isEqualTo(ROOT_EVENT_ID.bookName)
+                        get { scope }.isEqualTo(ROOT_EVENT_ID.scope)
+                    }
+                    get { hasParentId() }.isEqualTo(true)
+                    get { parentId }.isEqualTo(intervalEventId)
+                    get { name }.isEqualTo("Complete processing")
+                    get { type }.isEqualTo("Process interval")
+                    get { body.toStringUtf8() }.isEqualTo("[]")
+                }
+            }
+            withElementAt(3) {
+                get { eventsList }.single().and {
+                    get { id }.apply {
+                        get { bookName }.isEqualTo(ROOT_EVENT_ID.bookName)
+                        get { scope }.isEqualTo(ROOT_EVENT_ID.scope)
+                    }
+                    get { hasParentId() }.isEqualTo(true)
+                    get { parentId }.isEqualTo(processorEventId)
+                    get { name }.contains(Regex("Whole time range is processed \\[$ISO_DATE_TIME_REGEX - $ISO_DATE_TIME_REGEX\\)"))
+                    get { type }.isEqualTo("Process interval")
+                    get { body.toStringUtf8() }.isEqualTo("[]")
+                }
+            }
+
+            //TODO: 4, 5 event batches are individual
+        }
+    }
+
     private fun verify() {
         verify(dataProvider, times(1)).searchMessages(any())
     }
 
     private fun crawlerConfiguration(messages: Boolean, events: Boolean, useTransport: Boolean) = Configuration(
         crawler = CrawlerConfiguration(
-            messages = if(messages) MessageConfiguration(setOf(MESSAGE, RAW_MESSAGE), mapOf(KNOWN_BOOK to setOf())) else null,
-            events = if(events) EventConfiguration(mapOf(KNOWN_BOOK to setOf())) else null,
-            from =  FROM,
+            messages = if (messages) MessageConfiguration(
+                setOf(MESSAGE, RAW_MESSAGE),
+                mapOf(KNOWN_BOOK to setOf())
+            ) else null,
+            events = if (events) EventConfiguration(mapOf(KNOWN_BOOK to setOf())) else null,
+            from = FROM,
             to = TO,
             intervalLength = INTERVAL_LENGTH,
             syncInterval = INTERVAL_LENGTH.dividedBy(2),
@@ -380,6 +448,8 @@ class TestApplication {
     companion object {
         private const val MESSAGE_EXCLUSIVE_QUEUE = "message-exclusive-queue"
         private const val EVENT_EXCLUSIVE_QUEUE = "event-exclusive-queue"
+        private const val ISO_DATE_TIME_REGEX =
+            "\\d{4}-[01]\\d-[0-3]\\dT[0-2]\\d:[0-5]\\d:[0-5]\\d\\.\\d+([+-][0-2]\\d:[0-5]\\d|Z)"
 
         private val INTERVAL_LENGTH = Duration.ofMinutes(1)
         private val FROM = Instant.now()

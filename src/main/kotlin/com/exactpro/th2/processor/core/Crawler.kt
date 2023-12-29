@@ -60,7 +60,7 @@ abstract class Crawler<T>(
     protected var controller: Controller<T> = dummyController
 
     init {
-        // FIXME: if connection is be broken, subscribtion doesn't recover (exclusive queue specific)
+        // FIXME: if connection is be broken, subscription doesn't recover (exclusive queue specific)
         monitor = router.subscribeExclusive { _, batch ->
             try {
                 controller.actual(batch)

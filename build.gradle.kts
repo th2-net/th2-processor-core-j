@@ -69,7 +69,7 @@ dependencies {
 
     testImplementation("org.jetbrains.kotlin:kotlin-test-junit5")
     testImplementation("org.mockito.kotlin:mockito-kotlin:5.1.0")
-
+    testImplementation("io.strikt:strikt-core:0.34.1")
     testImplementation("org.junit.jupiter:junit-jupiter:5.10.0")
 }
 

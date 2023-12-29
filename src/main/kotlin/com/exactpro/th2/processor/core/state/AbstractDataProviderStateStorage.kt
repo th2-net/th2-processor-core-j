@@ -26,11 +26,13 @@ import com.exactpro.th2.common.message.toTimestamp
 import com.exactpro.th2.common.schema.message.MessageRouter
 import com.exactpro.th2.common.utils.event.EventBatcher
 import com.exactpro.th2.common.utils.message.logId
+import com.exactpro.th2.common.utils.toInstant
 import com.exactpro.th2.dataprovider.lw.grpc.DataProviderService
 import com.exactpro.th2.dataprovider.lw.grpc.MessageGroupResponse
 import com.exactpro.th2.dataprovider.lw.grpc.MessageSearchRequest
 import com.exactpro.th2.dataprovider.lw.grpc.TimeRelation
 import com.exactpro.th2.processor.utility.log
+import com.exactpro.th2.processor.utility.logWarn
 import com.google.protobuf.Int32Value
 import com.google.protobuf.Timestamp
 import com.google.protobuf.util.Timestamps
@@ -101,7 +103,7 @@ abstract class AbstractDataProviderStateStorage<T>(
                     return response.bodyRaw.toByteArray()
                 }
                 StateType.END, StateType.INTERMEDIATE, StateType.START -> {
-                    if (state.checkAndModify(pair)) {
+                    if (state.checkAndModify(parentEventId, pair)) {
                         val list: List<Byte> =
                             state.reversed().flatMap { (_, message) -> message.bodyRaw.toByteArray().asSequence() }
                         reportStateLoaded(parentEventId, state)
@@ -213,6 +215,82 @@ abstract class AbstractDataProviderStateStorage<T>(
             startTimestamp = timestamp
         }.build()
 
+    private fun MutableList<Pair<StateType, MessageGroupResponse>>.checkAndModify(
+        parentEventId: EventID,
+        pair: Pair<StateType, MessageGroupResponse>
+    ): Boolean {
+        val (statusType, message) = pair
+        when(statusType) {
+            StateType.START, StateType.INTERMEDIATE -> {
+                if (isEmpty()) {
+                    eventBatcher.onEvent(
+                        EventBuilder.start().apply {
+                            messageID(pair.messageId)
+                            name("Reversed state can't be start from $statusType status type")
+                            type(TYPE_LOAD_STATE)
+                            status(Event.Status.FAILED)
+                        }.toProto(parentEventId)
+                            .logWarn(K_LOGGER)
+                    )
+                } else {
+                    val (_, lastMessage) = last()
+                    if (message.messageId.sequence + 1 != lastMessage.messageId.sequence) {
+                        eventBatcher.onEvent(
+                            EventBuilder.start().apply {
+                                asSequence().map { it.second.messageId }.forEach(::messageID)
+                                messageID(pair.messageId)
+                                name("Dropped state by broken sequence, expected: ${lastMessage.messageId.sequence}, actual: ${message.messageId.sequence}")
+                                type(TYPE_LOAD_STATE)
+                                status(Event.Status.FAILED)
+                            }.toProto(parentEventId)
+                                .log(K_LOGGER)
+                        )
+                        clear()
+                        return false
+                    }
+                    if (Timestamps.compare(message.messageId.timestamp, lastMessage.messageId.timestamp) != 0) {
+                        eventBatcher.onEvent(
+                            EventBuilder.start().apply {
+                                asSequence().map { it.second.messageId }.forEach(::messageID)
+                                messageID(pair.messageId)
+                                name("Dropped state by broken timestamp, expected: ${lastMessage.messageId.timestamp.toInstant()}, actual: ${message.messageId.timestamp.toInstant()}")
+                                type(TYPE_LOAD_STATE)
+                                status(Event.Status.FAILED)
+                            }.toProto(parentEventId)
+                                .logWarn(K_LOGGER)
+                        )
+                        clear()
+                        return false
+                    }
+
+                    add(pair)
+                    if (statusType == StateType.START) {
+                        return true
+                    }
+                }
+            }
+            StateType.END -> {
+                if (isNotEmpty()) {
+                    eventBatcher.onEvent(
+                        EventBuilder.start().apply {
+                            asSequence().map { it.second.messageId }.forEach(::messageID)
+                            messageID(pair.messageId)
+                            name("Dropped uncompleted state ${reversed().logState}, current message ${pair.log}")
+                            type(TYPE_LOAD_STATE)
+                            status(Event.Status.FAILED)
+                        }.toProto(parentEventId)
+                            .logWarn(K_LOGGER)
+                    )
+                    clear()
+                }
+                add(pair)
+                return false
+            }
+            else -> error("Unsupported state type ${pair.log}")
+        }
+        return false
+    }
+
     companion object {
         private val K_LOGGER = KotlinLogging.logger { }
         private val PROPERTY_SIZE: Long = (StateType.METADATA_STATE_TYPE_PROPERTY.length + StateType.values().maxOf { it.name.length }).toLong()
@@ -223,52 +301,6 @@ abstract class AbstractDataProviderStateStorage<T>(
 
         const val MIN_STATE_SIZE = 256 * 1_024
         val METADATA_SIZE = PROPERTY_SIZE
-
-        private fun MutableList<Pair<StateType, MessageGroupResponse>>.checkAndModify(
-            pair: Pair<StateType, MessageGroupResponse>
-        ): Boolean {
-            val (statusType, message) = pair
-            when(statusType) {
-                StateType.START, StateType.INTERMEDIATE -> {
-                    if (isEmpty()) {
-                        K_LOGGER.warn { "Reversed state can't be start from ${pair.log} message" } //FIXME: publish as event
-                    } else {
-                        val (_, lastMessage) = last()
-                        if (message.messageId.sequence + 1 != lastMessage.messageId.sequence) {
-                            K_LOGGER.warn {
-                                "Dropped broken by sequence state ${reversed().logState}, current message ${pair.log}"
-                            } //FIXME: publish as event
-                            clear()
-                            return false
-                        }
-                        if (Timestamps.compare(message.messageId.timestamp, lastMessage.messageId.timestamp) != 0) {
-                            K_LOGGER.warn {
-                                "Dropped broken by timestamp state ${reversed().logState}, current message ${pair.log}"
-                            } //FIXME: publish as event
-                            clear()
-                            return false
-                        }
-
-                        add(pair)
-                        if (statusType == StateType.START) {
-                            return true
-                        }
-                    }
-                }
-                StateType.END -> {
-                    if (isNotEmpty()) {
-                        K_LOGGER.warn {
-                            "Dropped uncompleted state ${reversed().logState}, current message ${pair.log}"
-                        } //FIXME: publish as event
-                        clear()
-                    }
-                    add(pair)
-                    return false
-                }
-                else -> error("Unsupported state type ${pair.log}")
-            }
-            return false
-        }
 
         private fun mapStateTypeToMessage(message: MessageGroupResponse) =
             StateType.parse(message.messagePropertiesMap[StateType.METADATA_STATE_TYPE_PROPERTY]) to message
@@ -288,6 +320,8 @@ abstract class AbstractDataProviderStateStorage<T>(
         private val List<Pair<StateType, MessageGroupResponse>>.logState: String
             get() = joinToString(",", "[", "]") { pair -> pair.log }
 
+        private val Pair<StateType, MessageGroupResponse>.messageId: MessageID
+            get() = second.messageId
         private val Pair<StateType, MessageGroupResponse>.log: String
             get() = "${Timestamps.toString(second.messageId.timestamp)} - ${second.messageId.logId} ($first)"
 

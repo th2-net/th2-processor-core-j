@@ -49,18 +49,17 @@ inline fun Boolean.ifTrue(func: () -> Unit): Boolean = this.also { if(it) func()
 operator fun Timestamp.compareTo(another: Timestamp): Int = Timestamps.compare(this, another)
 
 fun <T : EventOrBuilder> T.log(kLogger: KLogger, asInfo: Boolean = true): T {
-    val func: () -> String = {
-        "Published event: name $name, type $type, status $status, ${
-            if (attachedMessageIdsCount == 0) { "" } else { 
-                "messages ${attachedMessageIdsList.joinToString(prefix = "[", postfix = "]") { it.logId }}, " 
-            }
-        }body ${body.toStringUtf8()}"
-    }
+    val func: () -> String = logFunc()
     when(status) {
         EventStatus.SUCCESS -> if (asInfo) kLogger.info(func) else kLogger.debug(func)
         EventStatus.FAILED -> kLogger.warn(func)
         else -> kLogger.error(func)
     }
+    return this
+}
+
+fun <T : EventOrBuilder> T.logWarn(kLogger: KLogger): T {
+    kLogger.warn(logFunc())
     return this
 }
 
@@ -80,4 +79,14 @@ fun Event.supplement(e: Exception): Event {
         e.messageIds.forEach(this::messageID)
     }
     return this
+}
+
+private fun <T : EventOrBuilder> T.logFunc(): () -> String = {
+    "Published event: name $name, type $type, status $status, ${
+        if (attachedMessageIdsCount == 0) {
+            ""
+        } else {
+            "messages ${attachedMessageIdsList.joinToString(prefix = "[", postfix = "]") { it.logId }}, "
+        }
+    }body ${body.toStringUtf8()}"
 }
