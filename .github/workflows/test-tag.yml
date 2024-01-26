@@ -1,0 +1,9 @@
+name: Test create push tag
+
+on: workflow_dispatch
+
+jobs:
+  build:
+    uses: th2-net/.github/.github/workflows/compaund-git-tag-push.yml@create-tag
+    with:
+      tagName: 'test-tag'

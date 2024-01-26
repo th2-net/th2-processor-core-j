@@ -1,16 +1,14 @@
-name: Dev build and publish jar to sonatype repo
+name: Build and publish release jar to sonatype repository
 
-on:
-  push:
-    branches-ignore:
-      - master
-      - version-*
+on: workflow_dispatch
 
 jobs:
-  sonatype-job:
-    uses: th2-net/.github/.github/workflows/compound-java-dev.yml@main
+  build:
+    uses: th2-net/.github/.github/workflows/compound-java.yml@main
     with:
       build-target: 'Sonatype'
+      devRelease: false
+      createTag: true
     secrets:
       sonatypeUsername: ${{ secrets.SONATYPE_NEXUS_USERNAME }}
       sonatypePassword: ${{ secrets.SONATYPE_NEXUS_PASSWORD }}
