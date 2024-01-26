@@ -29,7 +29,9 @@ class Configuration @JvmOverloads constructor(
     val stateSessionAlias: String? = null,
     val enableStoreState: Boolean = false,
 
-    val processorSettings: IProcessorSettings
+    val processorSettings: IProcessorSettings,
+
+    val useTransport: Boolean = false,
 ) {
     init {
         check((crawler != null) xor (realtime != null)) {

@@ -18,7 +18,6 @@ package com.exactpro.th2.processor.strategy
 
 import com.exactpro.th2.common.event.Event
 import com.exactpro.th2.common.grpc.EventID
-import com.exactpro.th2.common.utils.message.toTimestamp
 import com.exactpro.th2.processor.Application
 import com.exactpro.th2.processor.Application.Companion.CONFIGURATION_ERROR_PREFIX
 import com.exactpro.th2.processor.api.IProcessor
@@ -26,18 +25,16 @@ import com.exactpro.th2.processor.core.Context
 import com.exactpro.th2.processor.core.Crawler
 import com.exactpro.th2.processor.core.configuration.CrawlerConfiguration
 import com.exactpro.th2.processor.core.event.EventCrawler
-import com.exactpro.th2.processor.core.message.CradleMessageGroupCrawler
 import com.exactpro.th2.processor.core.state.CrawlerState
 import com.exactpro.th2.processor.utility.log
 import mu.KotlinLogging
 import java.time.Duration
 import java.time.Instant
 
-class CrawlerStrategy(context: Context): AbstractStrategy(context) {
+abstract class AbstractCrawlerStrategy(context: Context): AbstractStrategy(context) {
 
     private val crawlerConfig: CrawlerConfiguration = requireNotNull(context.configuration.crawler) {
-        CONFIGURATION_ERROR_PREFIX +
-                "the `crawler` setting can be null"
+        CONFIGURATION_ERROR_PREFIX + "the `crawler` setting can be null"
     }
     private val eventRouter = context.commonFactory.eventBatchRouter
     private val processor: IProcessor
@@ -67,7 +64,7 @@ class CrawlerStrategy(context: Context): AbstractStrategy(context) {
             crawlers = emptySet()
         } else {
             crawlers = mutableSetOf<Crawler<*>>().apply {
-                crawlerConfig.messages?.let { add(CradleMessageGroupCrawler(context, processor)) }
+                crawlerConfig.messages?.let { add(createCradleMessageGroupCrawler(context, processor)) }
                 crawlerConfig.events?.let { add(EventCrawler(context, processor)) }
             }
 
@@ -87,7 +84,7 @@ class CrawlerStrategy(context: Context): AbstractStrategy(context) {
         do {
             val intervalEventId: EventID = reportStartProcessing(context.processorEventId)
             crawlers.parallelStream().forEach { crawler ->
-                crawler.processInterval(currentFrom.toTimestamp(), currentTo.toTimestamp(), intervalEventId)
+                crawler.processInterval(currentFrom, currentTo, intervalEventId)
             }
             storeState(intervalEventId, CrawlerState(currentTo, processor.serializeState()))
             reportEndProcessing(intervalEventId)
@@ -109,6 +106,8 @@ class CrawlerStrategy(context: Context): AbstractStrategy(context) {
             K_LOGGER.error(e) { "Closing ${processor::class.java.simpleName} failure" }
         }
     }
+
+    internal abstract fun createCradleMessageGroupCrawler(context: Context, processor: IProcessor): Crawler<*>
 
     private fun doStepAndCheck(processorEventId: EventID, from: Instant): Boolean {
         currentFrom = from

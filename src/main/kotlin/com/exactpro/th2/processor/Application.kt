@@ -28,12 +28,9 @@ import com.exactpro.th2.dataprovider.lw.grpc.DataProviderService
 import com.exactpro.th2.processor.api.IProcessorFactory
 import com.exactpro.th2.processor.core.Context
 import com.exactpro.th2.processor.core.configuration.Configuration
-import com.exactpro.th2.processor.core.state.DataProviderStateStorage
 import com.exactpro.th2.processor.core.state.DummyStateStorage
 import com.exactpro.th2.processor.core.state.IStateStorage
 import com.exactpro.th2.processor.strategy.AbstractStrategy
-import com.exactpro.th2.processor.strategy.CrawlerStrategy
-import com.exactpro.th2.processor.strategy.RealtimeStrategy
 import com.exactpro.th2.processor.utility.load
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory
@@ -43,6 +40,12 @@ import com.google.common.util.concurrent.ThreadFactoryBuilder
 import mu.KotlinLogging
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import com.exactpro.th2.processor.core.state.protobuf.DataProviderStateStorage as ProtobufDataProviderStateStorage
+import com.exactpro.th2.processor.core.state.transport.DataProviderStateStorage as TransportDataProviderStateStorage
+import com.exactpro.th2.processor.strategy.protobuf.CrawlerStrategy as ProtobufCrawlerStrategy
+import com.exactpro.th2.processor.strategy.protobuf.RealtimeStrategy as ProtobufRealtimeStrategy
+import com.exactpro.th2.processor.strategy.transport.CrawlerStrategy as TransportCrawlerStrategy
+import com.exactpro.th2.processor.strategy.transport.RealtimeStrategy as TransportRealtimeStrategy
 
 class Application(
     private val commonFactory: CommonFactory
@@ -52,12 +55,10 @@ class Application(
         ThreadFactoryBuilder().setNameFormat("processor-core-%d").build()
     )
 
-    @Suppress("SpellCheckingInspection")
     private val liveness = registerLiveness("main")
 
     private val eventRouter: MessageRouter<EventBatch> = commonFactory.eventBatchRouter
     private val eventBatcher = EventBatcher(executor = scheduler, onBatch = eventRouter::sendAll)
-    private val messageRouter = commonFactory.messageRouterMessageGroupBatch
     private val rootEventId: EventID = requireNotNull(commonFactory.rootEventId) {
         "Common's root event id can not be null"
     }
@@ -65,7 +66,6 @@ class Application(
     private val processorFactory: IProcessorFactory
     private val stateStorage: IStateStorage
 
-    private val configuration: Configuration
     private val strategy: AbstractStrategy
 
     init {
@@ -83,19 +83,28 @@ class Application(
             commonFactory
             .getCustomConfiguration(Configuration::class.java, objectMapper)
         ) {
-            configuration = this
+            val maxMessageSize = commonFactory.cradleManager.storage.entitiesFactory.maxMessageBatchSize.toLong()
 
             stateStorage = if (enableStoreState) {
-                DataProviderStateStorage(
-                    messageRouter,
-                    eventBatcher,
-                    commonFactory.grpcRouter.getService(DataProviderService::class.java),
-                    commonFactory.boxConfiguration.bookName,
-                    requireNotNull(stateSessionAlias) { "`state session alias` can be empty" },
-                    // FIXME: the common factory does not provide access to cradle config
-                    // The only way to get this value is to initialize Cradle manager that we shouldn't do
-                    1024 * 1024,
-                )
+                if (useTransport) {
+                    TransportDataProviderStateStorage(
+                        commonFactory.transportGroupBatchRouter,
+                        eventBatcher,
+                        commonFactory.grpcRouter.getService(DataProviderService::class.java),
+                        commonFactory.boxConfiguration.bookName,
+                        requireNotNull(stateSessionAlias) { "`state session alias` can be empty" },
+                        maxMessageSize,
+                    )
+                } else {
+                    ProtobufDataProviderStateStorage(
+                        commonFactory.messageRouterMessageGroupBatch,
+                        eventBatcher,
+                        commonFactory.grpcRouter.getService(DataProviderService::class.java),
+                        commonFactory.boxConfiguration.bookName,
+                        requireNotNull(stateSessionAlias) { "`state session alias` can be empty" },
+                        maxMessageSize,
+                    )
+                }
             } else {
                  DummyStateStorage()
             }
@@ -117,12 +126,20 @@ class Application(
                 stateStorage,
                 eventBatcher,
                 scheduler,
-                configuration,
+                configuration = this,
             )
 
             strategy = when {
-                crawler != null -> CrawlerStrategy(context)
-                realtime != null -> RealtimeStrategy(context)
+                crawler != null -> if (useTransport) {
+                    TransportCrawlerStrategy(context)
+                } else {
+                    ProtobufCrawlerStrategy(context)
+                }
+                realtime != null -> if (useTransport) {
+                    TransportRealtimeStrategy(context)
+                } else {
+                    ProtobufRealtimeStrategy(context)
+                }
                 else -> error("$CONFIGURATION_ERROR_PREFIX processor work mode is unknown")
             }
         }

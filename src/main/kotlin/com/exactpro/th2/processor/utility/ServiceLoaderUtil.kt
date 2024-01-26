@@ -18,7 +18,7 @@ package com.exactpro.th2.processor.utility
 
 import java.util.ServiceLoader
 
-//FIXME: move to common-util project
+//TODO: move to common-util project
 inline fun <reified T> load(): T {
     val instances = ServiceLoader.load(T::class.java).toList()
 

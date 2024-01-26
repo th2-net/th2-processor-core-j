@@ -18,7 +18,6 @@ package com.exactpro.th2.processor.core.event
 
 import com.exactpro.th2.common.grpc.EventBatch
 import com.exactpro.th2.common.grpc.EventID
-import com.exactpro.th2.common.message.toTimestamp
 import com.exactpro.th2.common.schema.factory.CommonFactory
 import com.exactpro.th2.common.schema.grpc.router.GrpcRouter
 import com.exactpro.th2.common.schema.message.ExclusiveSubscriberMonitor
@@ -80,7 +79,7 @@ class TestEventCrawler {
     @Test
     fun `test response`() {
         val crawler = EventCrawler(context, processor)
-        crawler.processInterval(FROM.toTimestamp(), TO.toTimestamp(), INTERVAL_EVENT_ID)
+        crawler.processInterval(FROM, TO, INTERVAL_EVENT_ID)
 
         verify(dataProvider, times(1)).searchEvents(argThat { argument ->
             argument.hasStartTimestamp()

@@ -49,12 +49,12 @@ repositories {
 }
 
 dependencies {
-    api(platform("com.exactpro.th2:bom:4.4.0"))
+    api(platform("com.exactpro.th2:bom:4.5.0"))
 
     api("com.exactpro.th2:grpc-common:4.3.0-dev")
-    implementation("com.exactpro.th2:common:5.3.2-dev")
-    implementation("com.exactpro.th2:common-utils:2.1.1-dev")
-    implementation("com.exactpro.th2:grpc-lw-data-provider:2.0.1-dev")
+    implementation("com.exactpro.th2:common:5.7.2-dev")
+    implementation("com.exactpro.th2:common-utils:2.2.2-dev")
+    implementation("com.exactpro.th2:grpc-lw-data-provider:2.3.0-dev")
 
     implementation("com.fasterxml.jackson.core:jackson-core")
     implementation("com.fasterxml.jackson.module:jackson-module-kotlin")
@@ -69,7 +69,7 @@ dependencies {
 
     testImplementation("org.jetbrains.kotlin:kotlin-test-junit5")
     testImplementation("org.mockito.kotlin:mockito-kotlin:5.1.0")
-
+    testImplementation("io.strikt:strikt-core:0.34.1")
     testImplementation("org.junit.jupiter:junit-jupiter:5.10.0")
 }
 

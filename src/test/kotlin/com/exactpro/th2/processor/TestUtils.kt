@@ -17,14 +17,20 @@
 package com.exactpro.th2.processor
 
 import com.exactpro.th2.common.grpc.AnyMessage
+import com.exactpro.th2.common.grpc.Direction.SECOND
 import com.exactpro.th2.common.grpc.Message
 import com.exactpro.th2.common.grpc.MessageGroup
-import com.exactpro.th2.common.grpc.RawMessage
 import com.exactpro.th2.common.message.plusAssign
+import com.exactpro.th2.common.schema.message.impl.rabbitmq.transport.Direction
+import com.exactpro.th2.common.schema.message.impl.rabbitmq.transport.ParsedMessage
 import com.exactpro.th2.common.utils.message.toTimestamp
+import com.exactpro.th2.processor.core.configuration.MessageKind
 import java.time.Instant
 import java.util.concurrent.atomic.AtomicLong
 import kotlin.random.Random
+import com.exactpro.th2.common.grpc.RawMessage as ProtobufRawMessage
+import com.exactpro.th2.common.schema.message.impl.rabbitmq.transport.Message as TramsportMessage
+import com.exactpro.th2.common.schema.message.impl.rabbitmq.transport.RawMessage as TransportRawMessage
 
 const val STATE_SESSION_ALIAS = "state-session-alias"
 const val SESSION_ALIAS = "known-session-alias"
@@ -34,6 +40,7 @@ const val KNOWN_GROUP = "known-group"
 const val UNKNOWN_GROUP = "unknown-group"
 const val KNOWN_SCOPE = "known-scope"
 const val UNKNOWN_SCOPE = "unknown-scope"
+const val MESSAGE_TYPE = "message-type"
 
 val SEQUENCE_COUNTER = AtomicLong(Random.nextLong())
 
@@ -46,13 +53,13 @@ fun MessageGroup.Builder.message(
     sequence: Long = SEQUENCE_COUNTER.incrementAndGet()
 ) {
     when (kind) {
-        AnyMessage.KindCase.MESSAGE -> this += message(book, group, sessionAlias, timestamp, sequence)
-        AnyMessage.KindCase.RAW_MESSAGE -> this += rawMessage(book, group, sessionAlias, timestamp, sequence)
+        AnyMessage.KindCase.MESSAGE -> this += protobufMessage(book, group, sessionAlias, timestamp, sequence)
+        AnyMessage.KindCase.RAW_MESSAGE -> this += protobufRawMessage(book, group, sessionAlias, timestamp, sequence)
         else -> error("Unsupported kind $kind")
     }
 }
 
-fun message(
+fun protobufMessage(
     book: String,
     group: String,
     sessionAlias: String,
@@ -64,6 +71,29 @@ fun message(
             bookName = book
             this.timestamp = timestamp.toTimestamp()
             this.sequence = sequence
+            this.direction = SECOND
+            connectionIdBuilder.apply {
+                sessionGroup = group
+                this.sessionAlias = sessionAlias
+            }
+        }
+        messageType = MESSAGE_TYPE
+    }
+}.build()
+
+fun protobufRawMessage(
+    book: String,
+    group: String,
+    sessionAlias: String,
+    timestamp: Instant,
+    sequence: Long = SEQUENCE_COUNTER.incrementAndGet()
+): ProtobufRawMessage = ProtobufRawMessage.newBuilder().apply {
+    metadataBuilder.apply {
+        idBuilder.apply {
+            bookName = book
+            this.timestamp = timestamp.toTimestamp()
+            this.sequence = sequence
+            this.direction = SECOND
             connectionIdBuilder.apply {
                 sessionGroup = group
                 this.sessionAlias = sessionAlias
@@ -72,22 +102,41 @@ fun message(
     }
 }.build()
 
-fun rawMessage(
-    book: String,
-    group: String,
+fun message(
+    kind: MessageKind,
     sessionAlias: String,
     timestamp: Instant,
     sequence: Long = SEQUENCE_COUNTER.incrementAndGet()
-): RawMessage = RawMessage.newBuilder().apply {
-    metadataBuilder.apply {
-        idBuilder.apply {
-            bookName = book
-            this.timestamp = timestamp.toTimestamp()
-            this.sequence = sequence
-            connectionIdBuilder.apply {
-                sessionGroup = group
-                this.sessionAlias = sessionAlias
-            }
-        }
+): TramsportMessage<*> = when (kind) {
+    MessageKind.MESSAGE -> transportMessage(sessionAlias, timestamp, sequence)
+    MessageKind.RAW_MESSAGE -> transportRawMessage(sessionAlias, timestamp, sequence)
+    else -> error("Unsupported kind $kind")
+}
+
+fun transportMessage(
+    sessionAlias: String,
+    timestamp: Instant,
+    sequence: Long = SEQUENCE_COUNTER.incrementAndGet()
+): ParsedMessage = ParsedMessage.builder().apply {
+    idBuilder().apply {
+        setTimestamp(timestamp)
+        setSequence(sequence)
+        setSessionAlias(sessionAlias)
+        setDirection(Direction.OUTGOING)
     }
+    setType(MESSAGE_TYPE)
+    setBody(emptyMap())
+}.build()
+
+fun transportRawMessage(
+    sessionAlias: String,
+    timestamp: Instant,
+    sequence: Long = SEQUENCE_COUNTER.incrementAndGet()
+): TransportRawMessage = TransportRawMessage.builder().apply {
+    idBuilder().apply {
+        setTimestamp(timestamp)
+        setSequence(sequence)
+        setSessionAlias(sessionAlias)
+        setDirection(Direction.OUTGOING)
+    }.build()
 }.build()

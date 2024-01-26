@@ -1,5 +1,5 @@
 /*
- * Copyright 2022-2023 Exactpro (Exactpro Systems Limited)
+ * Copyright 2023 Exactpro (Exactpro Systems Limited)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,33 +21,35 @@ import com.exactpro.th2.common.event.bean.IRow
 import com.exactpro.th2.common.event.bean.Table
 import com.exactpro.th2.processor.core.configuration.MessageKind.RAW_MESSAGE
 import com.exactpro.th2.common.grpc.EventID
-import com.exactpro.th2.common.grpc.MessageGroupBatch
 import com.exactpro.th2.common.message.toJson
+import com.exactpro.th2.common.message.toTimestamp
+import com.exactpro.th2.common.schema.message.MessageRouter
 import com.exactpro.th2.dataprovider.lw.grpc.MessageGroupsQueueSearchRequest
 import com.exactpro.th2.dataprovider.lw.grpc.MessageGroupsQueueSearchRequest.BookGroups
 import com.exactpro.th2.dataprovider.lw.grpc.MessageLoadedStatistic
 import com.exactpro.th2.processor.api.IProcessor
 import com.exactpro.th2.processor.core.Context
+import com.exactpro.th2.processor.core.Controller
 import com.exactpro.th2.processor.core.Crawler
 import com.exactpro.th2.processor.core.configuration.MessageKind
-import com.exactpro.th2.processor.core.message.controller.CradleMessageGroupController
-import com.google.protobuf.Timestamp
 import mu.KotlinLogging
+import java.time.Instant
 
-internal class CradleMessageGroupCrawler(
+internal abstract class AbstractMessageCrawler<T>(
     context: Context,
     processor: IProcessor,
-) : Crawler<MessageGroupBatch>(
+    router: MessageRouter<T>
+) : Crawler<T>(
     context.commonFactory,
-    context.commonFactory.messageRouterMessageGroupBatch,
+    router,
     context.eventBatcher,
     processor,
     context.processorEventId,
     context.configuration
 ) {
-    private val messageKinds: Set<MessageKind> = requireNotNull(crawlerConfiguration.messages).messageKinds
+    protected val messageKinds: Set<MessageKind> = requireNotNull(crawlerConfiguration.messages).messageKinds
 
-    private val bookToGroups: Map<String, Set<String>> = requireNotNull(
+    protected val bookToGroups: Map<String, Set<String>> = requireNotNull(
         requireNotNull(crawlerConfiguration.messages) {
             "The `crawler.messages` configuration can not be null"
         }.bookToGroups
@@ -61,14 +63,14 @@ internal class CradleMessageGroupCrawler(
             }
         }.build()
     }
-    override fun process(from: Timestamp, to: Timestamp, intervalEventId: EventID) {
-        controller = CradleMessageGroupController(processor, intervalEventId, from, to, messageKinds, bookToGroups)
+    override fun process(from: Instant, to: Instant, intervalEventId: EventID) {
+        controller = createController(intervalEventId, from, to)
 
         val request = MessageGroupsQueueSearchRequest.newBuilder().apply {
-            startTimestamp = from
-            endTimestamp = to
+            startTimestamp = from.toTimestamp()
+            endTimestamp = to.toTimestamp()
             externalQueue = queue
-            syncInterval = this@CradleMessageGroupCrawler.syncInterval
+            syncInterval = this@AbstractMessageCrawler.syncInterval
             sendRawDirectly = messageKinds.contains(RAW_MESSAGE)
             rawOnly = messageKinds.size == 1 && messageKinds.contains(RAW_MESSAGE)
 
@@ -85,6 +87,9 @@ internal class CradleMessageGroupCrawler(
                 }
             }
     }
+
+    protected abstract fun createController(intervalEventId: EventID, from: Instant, to: Instant): Controller<T>
+
     private fun reportResponse(response: MessageLoadedStatistic, intervalEventId: EventID) {
         K_LOGGER.info { "Request ${response.toJson()}" }
         Event.start()

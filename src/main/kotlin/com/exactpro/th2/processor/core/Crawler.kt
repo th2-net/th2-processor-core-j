@@ -29,15 +29,12 @@ import com.exactpro.th2.processor.api.IProcessor
 import com.exactpro.th2.processor.core.configuration.Configuration
 import com.exactpro.th2.processor.core.configuration.CrawlerConfiguration
 import com.exactpro.th2.processor.utility.supplement
-import com.google.protobuf.Message
-import com.google.protobuf.Timestamp
-import com.google.protobuf.util.Timestamps.toString
 import mu.KotlinLogging
-import java.time.Duration
+import java.time.Instant
 
 typealias ProtoDuration = com.google.protobuf.Duration
 
-abstract class Crawler<T : Message>(
+abstract class Crawler<T>(
     commonFactory: CommonFactory,
     router: MessageRouter<T>,
     protected val eventBatcher: EventBatcher,
@@ -63,7 +60,7 @@ abstract class Crawler<T : Message>(
     protected var controller: Controller<T> = dummyController
 
     init {
-        // FIXME: if connection is be broken, subscribtion doesn't recover (exclusive queue specific)
+        // FIXME: if connection is be broken, subscription doesn't recover (exclusive queue specific)
         monitor = router.subscribeExclusive { _, batch ->
             try {
                 controller.actual(batch)
@@ -75,7 +72,7 @@ abstract class Crawler<T : Message>(
         queue = monitor.queue
     }
 
-    fun processInterval(from: Timestamp, to: Timestamp, intervalEventId: EventID) {
+    fun processInterval(from: Instant, to: Instant, intervalEventId: EventID) {
         try {
             process(from, to, intervalEventId)
         } catch (e: Exception) {
@@ -97,8 +94,8 @@ abstract class Crawler<T : Message>(
             .toProto(intervalEventId)
             .also(eventBatcher::onEvent)
     }
-    private fun reportProcessError(intervalEventId: EventID, from: Timestamp, to: Timestamp, e: Exception) {
-        K_LOGGER.error(e) { "Process interval failure [${toString(from)} - ${toString(to)})" }
+    private fun reportProcessError(intervalEventId: EventID, from: Instant, to: Instant, e: Exception) {
+        K_LOGGER.error(e) { "Process interval failure [$from - $to)" }
         Event.start()
             .name("Process interval failure ${e.message}")
             .type(EVENT_TYPE_PROCESS_INTERVAL)
@@ -113,7 +110,7 @@ abstract class Crawler<T : Message>(
         monitor.unsubscribe()
     }
 
-    protected abstract fun process(from: Timestamp, to: Timestamp, intervalEventId: EventID)
+    protected abstract fun process(from: Instant, to: Instant, intervalEventId: EventID)
 
     companion object {
         private val K_LOGGER = KotlinLogging.logger {}

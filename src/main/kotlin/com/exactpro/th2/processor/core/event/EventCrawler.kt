@@ -22,6 +22,7 @@ import com.exactpro.th2.common.event.bean.Table
 import com.exactpro.th2.common.grpc.EventBatch
 import com.exactpro.th2.common.grpc.EventID
 import com.exactpro.th2.common.message.toJson
+import com.exactpro.th2.common.message.toTimestamp
 import com.exactpro.th2.dataprovider.lw.grpc.EventLoadedStatistic
 import com.exactpro.th2.dataprovider.lw.grpc.EventLoadedStatistic.ScopeStat
 import com.exactpro.th2.dataprovider.lw.grpc.EventQueueSearchRequest
@@ -29,8 +30,8 @@ import com.exactpro.th2.processor.api.IProcessor
 import com.exactpro.th2.processor.core.Context
 import com.exactpro.th2.processor.core.Crawler
 import com.exactpro.th2.processor.core.event.controller.EventController
-import com.google.protobuf.Timestamp
 import mu.KotlinLogging
+import java.time.Instant
 
 class EventCrawler(
     context: Context,
@@ -57,12 +58,14 @@ class EventCrawler(
             }
         }.build()
     }
-    override fun process(from: Timestamp, to: Timestamp, intervalEventId: EventID) {
-        controller = EventController(processor, intervalEventId, from, to, bookToScopes)
+    override fun process(from: Instant, to: Instant, intervalEventId: EventID) {
+        val fromTimestamp = from.toTimestamp()
+        val toTimestamp = to.toTimestamp()
+        controller = EventController(processor, intervalEventId, fromTimestamp, toTimestamp, bookToScopes)
 
         val request = EventQueueSearchRequest.newBuilder().apply {
-            startTimestamp = from
-            endTimestamp = to
+            startTimestamp = fromTimestamp
+            endTimestamp = toTimestamp
             externalQueue = queue
             syncInterval = this@EventCrawler.syncInterval
 

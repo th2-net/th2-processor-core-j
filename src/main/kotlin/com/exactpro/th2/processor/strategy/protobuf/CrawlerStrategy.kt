@@ -1,5 +1,5 @@
 /*
- * Copyright 2022-2023 Exactpro (Exactpro Systems Limited)
+ * Copyright 2023 Exactpro (Exactpro Systems Limited)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,24 +14,13 @@
  * limitations under the License.
  */
 
-package com.exactpro.th2.processor.core
+package com.exactpro.th2.processor.strategy.protobuf
 
-import com.exactpro.th2.common.grpc.EventID
-import mu.KotlinLogging
+import com.exactpro.th2.processor.api.IProcessor
+import com.exactpro.th2.processor.core.Context
+import com.exactpro.th2.processor.core.message.protobuf.CradleMessageGroupCrawler
+import com.exactpro.th2.processor.strategy.AbstractCrawlerStrategy
 
-class DummyController<T>(
-    processorEventID: EventID
-) : Controller<T>(
-    processorEventID
-) {
-
-    override val isStateComplete: Boolean = true
-
-    override fun actual(batch: T) {
-        K_LOGGER.debug { "Skip $batch" }
-    }
-
-    companion object {
-        private val K_LOGGER = KotlinLogging.logger {}
-    }
+class CrawlerStrategy(context: Context): AbstractCrawlerStrategy(context) {
+    override fun createCradleMessageGroupCrawler(context: Context, processor: IProcessor) = CradleMessageGroupCrawler(context, processor)
 }
