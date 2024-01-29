@@ -4,7 +4,7 @@ on: workflow_dispatch
 
 jobs:
   build:
-    uses: th2-net/.github/.github/workflows/compound-java.yml@create-tag
+    uses: th2-net/.github/.github/workflows/compound-java.yml@main
     with:
       build-target: 'Sonatype'
       devRelease: true
