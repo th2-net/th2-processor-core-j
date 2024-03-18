@@ -32,6 +32,12 @@ class CrawlerConfiguration @JvmOverloads constructor(
 
     val awaitTimeout: Long = 10,
     val awaitUnit: TimeUnit = TimeUnit.SECONDS,
+    /**
+     * The minimal time between interval end and the current time.
+     * If interval end is after the current time or before current time but less than [intervalPrecessingDelay]
+     * the strategy will wait until `(interval end + [intervalPrecessingDelay]) <= current time`
+     */
+    val intervalPrecessingDelay: Duration = intervalLength,
 ) {
     init {
         check(!intervalLength.isNegative && !intervalLength.isZero) {
@@ -57,6 +63,9 @@ class CrawlerConfiguration @JvmOverloads constructor(
         check((messages != null) || (events != null)) {
             Application.CONFIGURATION_ERROR_PREFIX +
                     "neither of $messages `messages`, $events `events` options are filled."
+        }
+        check(!intervalPrecessingDelay.isNegative) {
+            "${::intervalPrecessingDelay.name} must be a positive value but was $intervalPrecessingDelay"
         }
     }
 }

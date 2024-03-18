@@ -43,6 +43,7 @@ abstract class AbstractCrawlerStrategy(context: Context): AbstractStrategy(conte
     private val from: Instant = crawlerConfig.from
     private val to: Instant? = crawlerConfig.to
     private val intervalLength: Duration = crawlerConfig.intervalLength
+    private val intervalProcessingDelay: Duration = crawlerConfig.intervalPrecessingDelay
 
     private var currentFrom: Instant
     private var currentTo: Instant
@@ -82,6 +83,8 @@ abstract class AbstractCrawlerStrategy(context: Context): AbstractStrategy(conte
         }
 
         do {
+            checkProcessingDelayAndWait()
+
             val intervalEventId: EventID = reportStartProcessing(context.processorEventId)
             crawlers.parallelStream().forEach { crawler ->
                 crawler.processInterval(currentFrom, currentTo, intervalEventId)
@@ -108,6 +111,20 @@ abstract class AbstractCrawlerStrategy(context: Context): AbstractStrategy(conte
     }
 
     internal abstract fun createCradleMessageGroupCrawler(context: Context, processor: IProcessor): Crawler<*>
+
+    private fun checkProcessingDelayAndWait() {
+        val currentTime = context.timeSource.instant()
+        val untilIntervalEnd = Duration.between(currentTo.plus(intervalProcessingDelay), currentTime)
+        if (untilIntervalEnd < Duration.ZERO) {
+            val absTimeToWait = untilIntervalEnd.abs()
+            K_LOGGER.info {
+                "Start processing interval from $currentFrom to $currentTo after $absTimeToWait. " +
+                        "Current time: $currentTime; processing delay: $intervalProcessingDelay"
+            }
+            val waitingTimeMillis = absTimeToWait.toMillis()
+            Thread.sleep(waitingTimeMillis)
+        }
+    }
 
     private fun doStepAndCheck(processorEventId: EventID, from: Instant): Boolean {
         currentFrom = from

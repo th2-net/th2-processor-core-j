@@ -22,6 +22,7 @@ import com.exactpro.th2.common.utils.event.EventBatcher
 import com.exactpro.th2.processor.api.IProcessorFactory
 import com.exactpro.th2.processor.core.configuration.Configuration
 import com.exactpro.th2.processor.core.state.IStateStorage
+import java.time.Clock
 import java.util.concurrent.ScheduledExecutorService
 
 class Context(
@@ -34,4 +35,5 @@ class Context(
     val eventBatcher: EventBatcher,
     val scheduler: ScheduledExecutorService,
     val configuration: Configuration,
+    val timeSource: Clock = Clock.systemUTC(),
 )
