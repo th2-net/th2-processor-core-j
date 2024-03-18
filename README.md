@@ -68,6 +68,11 @@ The default value is **10**.
 Allowed values are described [here](https://docs.oracle.com/en/java/javase/11/docs/api/java.base/java/time/temporal/ChronoUnit.html) in **Enum Constants** block.
 The default value is **SECONDS**.
 
+**intervalPrecessingDelay: _PT10M_** - a minimal difference between current time and the interval end to start processing that interval.
+If interval end is after the current time or before current time but less than **intervalPrecessingDelay**
+Processor will wait until the following condition is met: `(interval end + intervalPrecessingDelay) <= current time`.
+Defaults to the value for **intervalLength** parameter.
+
 For example:
 ```yaml
 apiVersion: th2.exactpro.com/v1
