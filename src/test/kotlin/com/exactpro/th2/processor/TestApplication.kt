@@ -71,6 +71,7 @@ import strikt.assertions.contains
 import strikt.assertions.isEqualTo
 import strikt.assertions.single
 import strikt.assertions.withElementAt
+import java.time.Clock
 import java.time.Duration
 import java.time.Instant
 import com.exactpro.th2.common.grpc.RawMessage as ProtobufRawMessage
@@ -131,6 +132,10 @@ class TestApplication {
         on { rootEventId }.thenReturn(ROOT_EVENT_ID)
     }
 
+    private val testTimeSource = mock<Clock> {
+        on { instant() } doReturn TO.plus(INTERVAL_LENGTH)
+    }
+
     interface AbstractTest {
         fun `test realtime mode`()
         fun `test message, raw message crawling`()
@@ -147,7 +152,7 @@ class TestApplication {
             mockMessages()
             whenever(commonFactory.getCustomConfiguration(eq(Configuration::class.java), any()))
                 .thenReturn(crawlerConfiguration(messages = true, events = true, useTransport = true))
-            Application(commonFactory).use(Application::run)
+            TestApplication(commonFactory).use(Application::run)
             verify()
             verifyCrawlerRouters()
         }
@@ -158,7 +163,7 @@ class TestApplication {
             mockEvents()
             whenever(commonFactory.getCustomConfiguration(eq(Configuration::class.java), any()))
                 .thenReturn(crawlerConfiguration(messages = false, events = true, useTransport = true))
-            Application(commonFactory).use(Application::run)
+            TestApplication(commonFactory).use(Application::run)
             verify()
             verifyCrawlerRouters()
         }
@@ -169,7 +174,7 @@ class TestApplication {
             mockMessages()
             whenever(commonFactory.getCustomConfiguration(eq(Configuration::class.java), any()))
                 .thenReturn(crawlerConfiguration(messages = true, events = false, useTransport = true))
-            Application(commonFactory).use(Application::run)
+            TestApplication(commonFactory).use(Application::run)
             verify()
             verifyCrawlerRouters()
         }
@@ -178,7 +183,7 @@ class TestApplication {
         override fun `test realtime mode`() {
             whenever(commonFactory.getCustomConfiguration(eq(Configuration::class.java), any()))
                 .thenReturn(realtimeConfiguration(useTransport = true))
-            Application(commonFactory).use(Application::run)
+            TestApplication(commonFactory).use(Application::run)
             verify()
             val eventSender = argumentCaptor<EventBatch> { }
             verify(eventRouter, times(2)).sendAll(eventSender.capture())
@@ -243,7 +248,7 @@ class TestApplication {
             mockMessages()
             whenever(commonFactory.getCustomConfiguration(eq(Configuration::class.java), any()))
                 .thenReturn(crawlerConfiguration(messages = true, events = true, useTransport = false))
-            Application(commonFactory).use(Application::run)
+            TestApplication(commonFactory).use(Application::run)
             verify()
             verifyCrawlerRouters()
         }
@@ -254,7 +259,7 @@ class TestApplication {
             mockEvents()
             whenever(commonFactory.getCustomConfiguration(eq(Configuration::class.java), any()))
                 .thenReturn(crawlerConfiguration(messages = false, events = true, useTransport = false))
-            Application(commonFactory).use(Application::run)
+            TestApplication(commonFactory).use(Application::run)
             verify()
             verifyCrawlerRouters()
         }
@@ -265,7 +270,7 @@ class TestApplication {
             mockMessages()
             whenever(commonFactory.getCustomConfiguration(eq(Configuration::class.java), any()))
                 .thenReturn(crawlerConfiguration(messages = true, events = false, useTransport = false))
-            Application(commonFactory).use(Application::run)
+            TestApplication(commonFactory).use(Application::run)
             verify()
             verifyCrawlerRouters()
         }
@@ -412,7 +417,7 @@ class TestApplication {
         stateSessionAlias = STATE_SESSION_ALIAS,
         enableStoreState = true,
         processorSettings = mock { },
-        useTransport = useTransport
+        useTransport = useTransport,
     )
 
     private fun realtimeConfiguration(useTransport: Boolean) = Configuration(
@@ -444,6 +449,10 @@ class TestApplication {
             }.build()
         }
     }
+
+    @Suppress("TestFunctionName")
+    private fun TestApplication(commonFactory: CommonFactory): Application =
+        Application(commonFactory, testTimeSource)
 
     companion object {
         private const val MESSAGE_EXCLUSIVE_QUEUE = "message-exclusive-queue"

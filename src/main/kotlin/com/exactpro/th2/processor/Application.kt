@@ -38,6 +38,7 @@ import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import com.google.common.util.concurrent.ThreadFactoryBuilder
 import mu.KotlinLogging
+import java.time.Clock
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import com.exactpro.th2.processor.core.state.protobuf.DataProviderStateStorage as ProtobufDataProviderStateStorage
@@ -47,9 +48,12 @@ import com.exactpro.th2.processor.strategy.protobuf.RealtimeStrategy as Protobuf
 import com.exactpro.th2.processor.strategy.transport.CrawlerStrategy as TransportCrawlerStrategy
 import com.exactpro.th2.processor.strategy.transport.RealtimeStrategy as TransportRealtimeStrategy
 
-class Application(
-    private val commonFactory: CommonFactory
+class Application internal constructor(
+    private val commonFactory: CommonFactory,
+    private val timeSource: Clock
 ) : Service {
+    constructor(commonFactory: CommonFactory) : this(commonFactory, Clock.systemUTC())
+
     private val scheduler = Executors.newScheduledThreadPool(
         1,
         ThreadFactoryBuilder().setNameFormat("processor-core-%d").build()
@@ -127,6 +131,7 @@ class Application(
                 eventBatcher,
                 scheduler,
                 configuration = this,
+                timeSource = timeSource,
             )
 
             strategy = when {
