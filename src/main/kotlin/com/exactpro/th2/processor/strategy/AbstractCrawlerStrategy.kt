@@ -121,6 +121,7 @@ abstract class AbstractCrawlerStrategy(context: Context): AbstractStrategy(conte
                 "Start processing interval from $currentFrom to $currentTo after $absTimeToWait. " +
                         "Current time: $currentTime; processing delay: $intervalProcessingDelay"
             }
+            reportWaitBeforeProcessing(absTimeToWait, context.processorEventId)
             val waitingTimeMillis = absTimeToWait.toMillis()
             Thread.sleep(waitingTimeMillis)
         }
@@ -134,6 +135,15 @@ abstract class AbstractCrawlerStrategy(context: Context): AbstractStrategy(conte
             return false
         }
         return true
+    }
+
+    private fun reportWaitBeforeProcessing(duration: Duration, processorEventId: EventID) {
+        Event.start()
+            .name("Waiting for '$duration' before processing interval [$currentFrom - $currentTo)")
+            .type(Application.EVENT_TYPE_PROCESS_INTERVAL)
+            .endTimestamp()
+            .toProto(processorEventId)
+            .also(context.eventBatcher::onEvent)
     }
 
     private fun reportProcessingComplete(crawlerConfig: CrawlerConfiguration, processorEventId: EventID) = Event.start()
