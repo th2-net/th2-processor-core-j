@@ -118,7 +118,7 @@ abstract class AbstractCrawlerStrategy(context: Context): AbstractStrategy(conte
         if (untilIntervalEnd < Duration.ZERO) {
             val absTimeToWait = untilIntervalEnd.abs()
             K_LOGGER.info {
-                "Start processing interval from $currentFrom to $currentTo after $absTimeToWait. " +
+                "Wait for $absTimeToWait before processing interval from $currentFrom to $currentTo. " +
                         "Current time: $currentTime; processing delay: $intervalProcessingDelay"
             }
             reportWaitBeforeProcessing(absTimeToWait, context.processorEventId)
