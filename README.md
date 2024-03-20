@@ -1,4 +1,4 @@
-# Description of th2-processor-core-j (0.2.0)
+# Description of th2-processor-core-j (0.3.0)
 
 This is a common processor library which takes care of some features like requesting messages/events from a lw-data-provider (LwDP), subscribing to message queues, verify incoming streams vs response from LwDP, loading processor settings, etc.
 
@@ -395,6 +395,12 @@ spec:
 ```
 
 # Release notes
+
+## 0.3.0
+
+### Feature:
++ Crawler strategy waits before processing interval if it ends in the future.
+  Parameter `intervalPrecessingDelay` regulates how much time should pass after interval end to proceed with processing. 
 
 ## 0.2.0
 
