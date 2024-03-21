@@ -5,8 +5,8 @@ plugins {
     kotlin("kapt") version "1.8.22"
     `java-library`
     `maven-publish`
-    id("com.exactpro.th2.gradle.base") version "0.0.3"
-    id("com.exactpro.th2.gradle.publish") version "0.0.3"
+    id("com.exactpro.th2.gradle.base") version "0.0.4"
+    id("com.exactpro.th2.gradle.publish") version "0.0.4"
 }
 
 group = "com.exactpro.th2"
@@ -40,8 +40,8 @@ repositories {
 }
 
 dependencies {
-    api("com.exactpro.th2:grpc-common:4.3.0-dev")
-    implementation("com.exactpro.th2:common:5.7.2-dev")
+    api("com.exactpro.th2:grpc-common:4.4.0-dev")
+    implementation("com.exactpro.th2:common:5.10.0-dev")
     implementation("com.exactpro.th2:common-utils:2.2.2-dev")
     implementation("com.exactpro.th2:grpc-lw-data-provider:2.3.0-dev")
 
