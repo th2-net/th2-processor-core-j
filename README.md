@@ -400,7 +400,11 @@ spec:
 
 ### Feature:
 + Crawler strategy waits before processing interval if it ends in the future.
-  Parameter `intervalPrecessingDelay` regulates how much time should pass after interval end to proceed with processing. 
+  Parameter `intervalPrecessingDelay` regulates how much time should pass after interval end to proceed with processing.
+
+### Deps:
++ grpc-common 4.3.0-dev -> 4.4.0-dev
++ common 5.7.2-dev -> 5.10.0-dev
 
 ## 0.2.0
 
