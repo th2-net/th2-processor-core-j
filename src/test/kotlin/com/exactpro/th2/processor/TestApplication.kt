@@ -36,6 +36,7 @@ import com.exactpro.th2.common.schema.message.MessageRouter
 import com.exactpro.th2.common.schema.message.impl.rabbitmq.transport.GroupBatch
 import com.exactpro.th2.common.schema.message.impl.rabbitmq.transport.ParsedMessage
 import com.exactpro.th2.common.utils.message.transport.toGroup
+import com.exactpro.th2.common.utils.toInstant
 import com.exactpro.th2.dataprovider.lw.grpc.DataProviderService
 import com.exactpro.th2.dataprovider.lw.grpc.EventLoadedStatistic
 import com.exactpro.th2.dataprovider.lw.grpc.MessageLoadedStatistic
@@ -59,6 +60,7 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
 import org.mockito.kotlin.any
 import org.mockito.kotlin.argumentCaptor
+import org.mockito.kotlin.atLeast
 import org.mockito.kotlin.doReturn
 import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
@@ -66,13 +68,18 @@ import org.mockito.kotlin.same
 import org.mockito.kotlin.times
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
+import strikt.api.expect
 import strikt.api.expectThat
 import strikt.assertions.contains
 import strikt.assertions.isEqualTo
+import strikt.assertions.isLessThan
+import strikt.assertions.isNotNull
 import strikt.assertions.single
 import strikt.assertions.withElementAt
+import java.time.Clock
 import java.time.Duration
 import java.time.Instant
+import kotlin.test.assertNotNull
 import com.exactpro.th2.common.grpc.RawMessage as ProtobufRawMessage
 import com.exactpro.th2.common.schema.message.impl.rabbitmq.transport.MessageGroup.Companion as TransportMessageGroup
 import com.exactpro.th2.common.schema.message.impl.rabbitmq.transport.RawMessage as TransportRawMessage
@@ -131,11 +138,17 @@ class TestApplication {
         on { rootEventId }.thenReturn(ROOT_EVENT_ID)
     }
 
+    private val testTimeSource = mock<Clock> {
+        on { instant() } doReturn TO.plus(INTERVAL_LENGTH)
+    }
+
     interface AbstractTest {
         fun `test realtime mode`()
         fun `test message, raw message crawling`()
         fun `test event crawling`()
         fun `test event, message, raw message crawling`()
+
+        fun `test crawler strategy waits before processing`()
     }
 
     @Nested
@@ -147,9 +160,22 @@ class TestApplication {
             mockMessages()
             whenever(commonFactory.getCustomConfiguration(eq(Configuration::class.java), any()))
                 .thenReturn(crawlerConfiguration(messages = true, events = true, useTransport = true))
-            Application(commonFactory).use(Application::run)
+            TestApplication(commonFactory).use(Application::run)
             verify()
             verifyCrawlerRouters()
+        }
+
+        @Test
+        @Timeout(10)
+        override fun `test crawler strategy waits before processing`() {
+            mockEvents()
+            whenever(commonFactory.getCustomConfiguration(eq(Configuration::class.java), any()))
+                .thenReturn(crawlerConfiguration(messages = false, events = true, useTransport = true))
+            // Strategy will have to wait for 1 second
+            whenever(testTimeSource.instant()) doReturn TO.plus(INTERVAL_LENGTH).minusSeconds(1)
+            TestApplication(commonFactory).use(Application::run)
+            verify()
+            verifyDelayEventPublished()
         }
 
         @Test
@@ -158,7 +184,7 @@ class TestApplication {
             mockEvents()
             whenever(commonFactory.getCustomConfiguration(eq(Configuration::class.java), any()))
                 .thenReturn(crawlerConfiguration(messages = false, events = true, useTransport = true))
-            Application(commonFactory).use(Application::run)
+            TestApplication(commonFactory).use(Application::run)
             verify()
             verifyCrawlerRouters()
         }
@@ -169,7 +195,7 @@ class TestApplication {
             mockMessages()
             whenever(commonFactory.getCustomConfiguration(eq(Configuration::class.java), any()))
                 .thenReturn(crawlerConfiguration(messages = true, events = false, useTransport = true))
-            Application(commonFactory).use(Application::run)
+            TestApplication(commonFactory).use(Application::run)
             verify()
             verifyCrawlerRouters()
         }
@@ -178,7 +204,7 @@ class TestApplication {
         override fun `test realtime mode`() {
             whenever(commonFactory.getCustomConfiguration(eq(Configuration::class.java), any()))
                 .thenReturn(realtimeConfiguration(useTransport = true))
-            Application(commonFactory).use(Application::run)
+            TestApplication(commonFactory).use(Application::run)
             verify()
             val eventSender = argumentCaptor<EventBatch> { }
             verify(eventRouter, times(2)).sendAll(eventSender.capture())
@@ -243,9 +269,22 @@ class TestApplication {
             mockMessages()
             whenever(commonFactory.getCustomConfiguration(eq(Configuration::class.java), any()))
                 .thenReturn(crawlerConfiguration(messages = true, events = true, useTransport = false))
-            Application(commonFactory).use(Application::run)
+            TestApplication(commonFactory).use(Application::run)
             verify()
             verifyCrawlerRouters()
+        }
+
+        @Test
+        @Timeout(10)
+        override fun `test crawler strategy waits before processing`() {
+            mockEvents()
+            whenever(commonFactory.getCustomConfiguration(eq(Configuration::class.java), any()))
+                .thenReturn(crawlerConfiguration(messages = false, events = true, useTransport = false))
+            // Strategy will have to wait for 1 second
+            whenever(testTimeSource.instant()) doReturn TO.plus(INTERVAL_LENGTH).minusSeconds(1)
+            TestApplication(commonFactory).use(Application::run)
+            verify()
+            verifyDelayEventPublished()
         }
 
         @Test
@@ -254,7 +293,7 @@ class TestApplication {
             mockEvents()
             whenever(commonFactory.getCustomConfiguration(eq(Configuration::class.java), any()))
                 .thenReturn(crawlerConfiguration(messages = false, events = true, useTransport = false))
-            Application(commonFactory).use(Application::run)
+            TestApplication(commonFactory).use(Application::run)
             verify()
             verifyCrawlerRouters()
         }
@@ -265,7 +304,7 @@ class TestApplication {
             mockMessages()
             whenever(commonFactory.getCustomConfiguration(eq(Configuration::class.java), any()))
                 .thenReturn(crawlerConfiguration(messages = true, events = false, useTransport = false))
-            Application(commonFactory).use(Application::run)
+            TestApplication(commonFactory).use(Application::run)
             verify()
             verifyCrawlerRouters()
         }
@@ -392,6 +431,30 @@ class TestApplication {
         }
     }
 
+    private fun verifyDelayEventPublished() {
+        val events = argumentCaptor<EventBatch>()
+        verify(eventRouter, atLeast(6).description("Publish events")).sendAll(events.capture())
+        val waitEvent: Event? = events.allValues.asSequence()
+            .flatMap { it.eventsList }
+            .find {
+                it.name.startsWith("Waiting for ")
+            }
+        val processingEvent: Event = assertNotNull(events.allValues.asSequence()
+            .flatMap { it.eventsList }
+            .find {
+                it.name.startsWith("Process interval [")
+            }, "not processing event found")
+        expect {
+            that(waitEvent)
+                .isNotNull()
+                .and {
+                    get { name } isEqualTo "Waiting for 'PT1S' before processing interval [$FROM - $TO)"
+                    get { type } isEqualTo Application.EVENT_TYPE_PROCESS_INTERVAL
+                    get { id.startTimestamp.toInstant() } isLessThan processingEvent.id.startTimestamp.toInstant()
+                }
+        }
+    }
+
     private fun verify() {
         verify(dataProvider, times(1)).searchMessages(any())
     }
@@ -412,7 +475,7 @@ class TestApplication {
         stateSessionAlias = STATE_SESSION_ALIAS,
         enableStoreState = true,
         processorSettings = mock { },
-        useTransport = useTransport
+        useTransport = useTransport,
     )
 
     private fun realtimeConfiguration(useTransport: Boolean) = Configuration(
@@ -444,6 +507,10 @@ class TestApplication {
             }.build()
         }
     }
+
+    @Suppress("TestFunctionName")
+    private fun TestApplication(commonFactory: CommonFactory): Application =
+        Application(commonFactory, testTimeSource)
 
     companion object {
         private const val MESSAGE_EXCLUSIVE_QUEUE = "message-exclusive-queue"
