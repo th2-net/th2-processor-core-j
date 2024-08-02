@@ -5,8 +5,8 @@ plugins {
     kotlin("kapt") version "1.8.22"
     `java-library`
     `maven-publish`
-    id("com.exactpro.th2.gradle.base") version "0.0.4"
-    id("com.exactpro.th2.gradle.publish") version "0.0.4"
+    id("com.exactpro.th2.gradle.base") version "0.1.1"
+    id("com.exactpro.th2.gradle.publish") version "0.1.1"
 }
 
 group = "com.exactpro.th2"
@@ -40,10 +40,10 @@ repositories {
 }
 
 dependencies {
-    api("com.exactpro.th2:grpc-common:4.4.0-dev")
-    implementation("com.exactpro.th2:common:5.10.0-dev")
-    implementation("com.exactpro.th2:common-utils:2.2.2-dev")
-    implementation("com.exactpro.th2:grpc-lw-data-provider:2.3.0-dev")
+    api("com.exactpro.th2:grpc-common:4.5.0-dev")
+    implementation("com.exactpro.th2:common:5.14.0-dev")
+    implementation("com.exactpro.th2:common-utils:2.2.3-dev")
+    implementation("com.exactpro.th2:grpc-lw-data-provider:2.3.3-dev")
 
     implementation("com.fasterxml.jackson.core:jackson-core")
     implementation("com.fasterxml.jackson.module:jackson-module-kotlin")
@@ -57,9 +57,9 @@ dependencies {
     kaptTest("com.google.auto.service:auto-service:1.1.1")
 
     testImplementation("org.jetbrains.kotlin:kotlin-test-junit5")
-    testImplementation("org.mockito.kotlin:mockito-kotlin:5.1.0")
+    testImplementation("org.mockito.kotlin:mockito-kotlin:5.4.0")
     testImplementation("io.strikt:strikt-core:0.34.1")
-    testImplementation("org.junit.jupiter:junit-jupiter:5.10.0")
+    testImplementation("org.junit.jupiter:junit-jupiter:5.10.3")
 }
 
 tasks {
