@@ -1,4 +1,4 @@
-# Description of th2-processor-core-j (0.4.0)
+# Description of th2-processor-core-j (0.3.0)
 
 This is a common processor library which takes care of some features like requesting messages/events from a lw-data-provider (LwDP), subscribing to message queues, verify incoming streams vs response from LwDP, loading processor settings, etc.
 
@@ -396,15 +396,6 @@ spec:
 
 # Release notes
 
-## 0.4.0
-
-### Updated
-+ th2-gradle-plugin 0.4.0 -> 0.1.1
-+ bom 4.6.0 -> 4.6.1
-+ common 5.10.0-dev -> 5.14.0-dev
-+ common-utils 2.2.2-dev -> 2.2.3-dev
-+ grpc-lw-data-provider 2.3.0-dev -> 2.3.3-dev
-
 ## 0.3.0
 
 ### Feature:
@@ -412,8 +403,11 @@ spec:
   Parameter `intervalPrecessingDelay` regulates how much time should pass after interval end to proceed with processing.
 
 ### Deps:
-+ grpc-common 4.3.0-dev -> 4.4.0-dev
-+ common 5.7.2-dev -> 5.10.0-dev
++ th2-gradle-plugin 0.4.0 -> 0.1.1
++ bom 4.6.0 -> 4.6.1
++ common 5.7.2-dev -> 5.14.0-dev
++ common-utils 2.2.2-dev -> 2.2.3-dev
++ grpc-lw-data-provider 2.3.0-dev -> 2.3.3-dev
 
 ## 0.2.0
 
