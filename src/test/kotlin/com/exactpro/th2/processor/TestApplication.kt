@@ -131,7 +131,7 @@ class TestApplication {
         on { transportGroupBatchRouter }.thenReturn(transportMessageRouter)
         on { grpcRouter }.thenReturn(grpcRouter)
         on { boxConfiguration }.thenReturn(BoxConfiguration().apply {
-            boxName = "test-box"
+            setBoxName("test-box")
             bookName = KNOWN_BOOK
         })
         on { cradleManager }.thenReturn(cradleManager)

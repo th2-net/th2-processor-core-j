@@ -403,8 +403,11 @@ spec:
   Parameter `intervalPrecessingDelay` regulates how much time should pass after interval end to proceed with processing.
 
 ### Deps:
-+ grpc-common 4.3.0-dev -> 4.4.0-dev
-+ common 5.7.2-dev -> 5.10.0-dev
++ th2-gradle-plugin 0.4.0 -> 0.1.1
++ bom 4.6.0 -> 4.6.1
++ common 5.7.2-dev -> 5.14.0-dev
++ common-utils 2.2.2-dev -> 2.2.3-dev
++ grpc-lw-data-provider 2.3.0-dev -> 2.3.3-dev
 
 ## 0.2.0
 
