@@ -1,4 +1,4 @@
-# Description of th2-processor-core-j (0.2.0)
+# Description of th2-processor-core-j (0.3.0)
 
 This is a common processor library which takes care of some features like requesting messages/events from a lw-data-provider (LwDP), subscribing to message queues, verify incoming streams vs response from LwDP, loading processor settings, etc.
 
@@ -67,6 +67,11 @@ The default value is **10**.
 **awaitUnit: _SECONDS_** - the time unit for **awaitTimeout** parameter.
 Allowed values are described [here](https://docs.oracle.com/en/java/javase/11/docs/api/java.base/java/time/temporal/ChronoUnit.html) in **Enum Constants** block.
 The default value is **SECONDS**.
+
+**intervalPrecessingDelay: _PT10M_** - a minimal difference between current time and the interval end to start processing that interval.
+If interval end is after the current time or before current time but less than **intervalPrecessingDelay**
+Processor will wait until the following condition is met: `(interval end + intervalPrecessingDelay) <= current time`.
+Defaults to the value for **intervalLength** parameter.
 
 For example:
 ```yaml
@@ -390,6 +395,19 @@ spec:
 ```
 
 # Release notes
+
+## 0.3.0
+
+### Feature:
++ Crawler strategy waits before processing interval if it ends in the future.
+  Parameter `intervalPrecessingDelay` regulates how much time should pass after interval end to proceed with processing.
+
+### Deps:
++ th2-gradle-plugin 0.4.0 -> 0.1.1
++ bom 4.6.0 -> 4.6.1
++ common 5.7.2-dev -> 5.14.0-dev
++ common-utils 2.2.2-dev -> 2.2.3-dev
++ grpc-lw-data-provider 2.3.0-dev -> 2.3.3-dev
 
 ## 0.2.0
 

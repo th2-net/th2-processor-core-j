@@ -43,6 +43,7 @@ abstract class AbstractCrawlerStrategy(context: Context): AbstractStrategy(conte
     private val from: Instant = crawlerConfig.from
     private val to: Instant? = crawlerConfig.to
     private val intervalLength: Duration = crawlerConfig.intervalLength
+    private val intervalProcessingDelay: Duration = crawlerConfig.intervalPrecessingDelay
 
     private var currentFrom: Instant
     private var currentTo: Instant
@@ -82,6 +83,8 @@ abstract class AbstractCrawlerStrategy(context: Context): AbstractStrategy(conte
         }
 
         do {
+            checkProcessingDelayAndWait()
+
             val intervalEventId: EventID = reportStartProcessing(context.processorEventId)
             crawlers.parallelStream().forEach { crawler ->
                 crawler.processInterval(currentFrom, currentTo, intervalEventId)
@@ -109,6 +112,21 @@ abstract class AbstractCrawlerStrategy(context: Context): AbstractStrategy(conte
 
     internal abstract fun createCradleMessageGroupCrawler(context: Context, processor: IProcessor): Crawler<*>
 
+    private fun checkProcessingDelayAndWait() {
+        val currentTime = context.timeSource.instant()
+        val untilIntervalEnd = Duration.between(currentTo.plus(intervalProcessingDelay), currentTime)
+        if (untilIntervalEnd < Duration.ZERO) {
+            val absTimeToWait = untilIntervalEnd.abs()
+            K_LOGGER.info {
+                "Wait for $absTimeToWait before processing interval from $currentFrom to $currentTo. " +
+                        "Current time: $currentTime; processing delay: $intervalProcessingDelay"
+            }
+            reportWaitBeforeProcessing(absTimeToWait, context.processorEventId)
+            val waitingTimeMillis = absTimeToWait.toMillis()
+            Thread.sleep(waitingTimeMillis)
+        }
+    }
+
     private fun doStepAndCheck(processorEventId: EventID, from: Instant): Boolean {
         currentFrom = from
         currentTo = currentFrom.doStep()
@@ -117,6 +135,15 @@ abstract class AbstractCrawlerStrategy(context: Context): AbstractStrategy(conte
             return false
         }
         return true
+    }
+
+    private fun reportWaitBeforeProcessing(duration: Duration, processorEventId: EventID) {
+        Event.start()
+            .name("Waiting for '$duration' before processing interval [$currentFrom - $currentTo)")
+            .type(Application.EVENT_TYPE_PROCESS_INTERVAL)
+            .endTimestamp()
+            .toProto(processorEventId)
+            .also(context.eventBatcher::onEvent)
     }
 
     private fun reportProcessingComplete(crawlerConfig: CrawlerConfiguration, processorEventId: EventID) = Event.start()
